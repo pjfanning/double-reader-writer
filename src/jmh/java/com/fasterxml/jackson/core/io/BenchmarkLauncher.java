@@ -15,7 +15,7 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 import java.util.regex.Pattern;
 
 @BenchmarkMode(Mode.Throughput)
-@Warmup(iterations = 5)
+@Warmup(iterations = 3)
 @Fork(1)
 @Threads(1)
 public abstract class BenchmarkLauncher {
