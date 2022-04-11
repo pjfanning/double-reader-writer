@@ -3,6 +3,8 @@ benchmark testing number reading/writing in Java
 
 So far, [FastDoubleParser](https://github.com/FasterXML/jackson-core/pull/747) looks useful if the parser results can be verified to be correct. The results for [RyuWriter](https://github.com/FasterXML/jackson-core/pull/749) seem more mixed. RyuWriter seems to have a major weak point dealing with whole numbers (int/long) but is faster than JDK for writing random doubles.
 
+Also, seems worthwhile to use JDK regardless of whether that is with JDK read/writing or with the custom implementations.
+
 
 ## Azul Java 17.0.2 Old Macbook
 
