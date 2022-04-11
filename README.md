@@ -17,3 +17,16 @@ WriterBenchmark.jdkLongWriter       thrpt    5  108114.384 ± 3921.598  ops/s
 WriterBenchmark.ryuDoubleWriter     thrpt    5   11079.164 ±  253.736  ops/s
 WriterBenchmark.ryuIntWriter        thrpt    5    7430.936 ±   64.940  ops/s
 ```
+
+## Azul Java 8.0.302 Old Macbook
+
+```
+Benchmark                            Mode  Cnt      Score       Error  Units
+ReaderBenchmark.fastDoubleReader    thrpt    5  16937.924 ±  5739.432  ops/s
+ReaderBenchmark.jdkDoubleReader     thrpt    5   2926.784 ±   758.610  ops/s
+WriterBenchmark.jdkDoubleIntWriter  thrpt    5  15522.527 ±  8641.042  ops/s
+WriterBenchmark.jdkDoubleWriter     thrpt    5   2328.459 ±  2650.717  ops/s
+WriterBenchmark.jdkLongWriter       thrpt    5  35925.028 ± 23430.263  ops/s
+WriterBenchmark.ryuDoubleWriter     thrpt    5   9918.672 ±  1684.168  ops/s
+WriterBenchmark.ryuIntWriter        thrpt    5   5459.533 ±  4774.409  ops/s
+```
