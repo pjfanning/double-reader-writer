@@ -1,5 +1,5 @@
 # double-reader-writer
-benchmark testing number reading/writing in Java
+Benchmark testing number reading/writing in Java. Relates to https://github.com/FasterXML/jackson-core/issues/577
 
 So far, [FastDoubleParser](https://github.com/FasterXML/jackson-core/pull/747) looks useful if the parser results can be verified to be correct. The results for [RyuWriter](https://github.com/FasterXML/jackson-core/pull/749) seem more mixed. RyuWriter seems to have a major weak point dealing with whole numbers (int/long) but is faster than JDK for writing random doubles.
 
