@@ -1,6 +1,7 @@
 package com.fasterxml.jackson.core.io;
 
 import com.fasterxml.jackson.core.io.numberwriter.RyuDouble;
+import com.fasterxml.jackson.core.io.schubfach.DoubleToDecimal;
 import org.openjdk.jmh.annotations.Benchmark;
 
 import java.util.Random;
@@ -24,6 +25,13 @@ public class WriterBenchmark extends BenchmarkLauncher {
     }
 
     @Benchmark
+    public void schubfachIntWriter() {
+        for (int i = 0; i < LEN; i++) {
+            DoubleToDecimal.toString((double)i);
+        }
+    }
+
+    @Benchmark
     public void jdkDoubleIntWriter() {
         for (int i = 0; i < LEN; i++) {
             Double.toString((double)i);
@@ -41,6 +49,13 @@ public class WriterBenchmark extends BenchmarkLauncher {
     public void ryuDoubleWriter() {
         for (Double d : DOUBLES) {
             RyuDouble.doubleToString(d);
+        }
+    }
+
+    @Benchmark
+    public void schubfachDoubleWriter() {
+        for (Double d : DOUBLES) {
+            DoubleToDecimal.toString(d);
         }
     }
 
