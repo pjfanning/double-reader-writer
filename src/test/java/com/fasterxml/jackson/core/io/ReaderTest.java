@@ -11,12 +11,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class ReaderTest {
     private static final int LEN = 1000;
     private static final String[] DOUBLE_STRINGS = new String[LEN];
+    private static final String[] FLOAT_STRINGS = new String[LEN];
     private static final String[] LONG_STRINGS = new String[LEN];
 
     static {
         Random rnd = new Random();
         for (int i = 0; i < LEN; i++) {
             DOUBLE_STRINGS[i] = Double.toString(rnd.nextDouble());
+            FLOAT_STRINGS[i] = Float.toString(rnd.nextFloat());
             LONG_STRINGS[i] = Long.toString(rnd.nextLong());
         }
     }
@@ -25,6 +27,15 @@ public class ReaderTest {
     void verifyDoubles() {
         for (int i = 0; i < LEN; i++) {
             double fd = FastDoubleParser.parseDouble(DOUBLE_STRINGS[i]);
+            double jd = Double.parseDouble(DOUBLE_STRINGS[i]);
+            assertEquals(jd, fd);
+        }
+    }
+
+    @Test
+    void verifyFloats() {
+        for (int i = 0; i < LEN; i++) {
+            double fd = FastDoubleParser.parseDouble(FLOAT_STRINGS[i]);
             double jd = Double.parseDouble(DOUBLE_STRINGS[i]);
             assertEquals(jd, fd);
         }
