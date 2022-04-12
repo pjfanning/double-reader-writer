@@ -10,14 +10,18 @@ Also, seems worthwhile to use newer JDKs regardless of whether that is with JDK 
 
 
 ```
-Benchmark                            Mode  Cnt       Score      Error  Units
-ReaderBenchmark.fastDoubleReader    thrpt    5   23582.740 ±  191.994  ops/s
-ReaderBenchmark.jdkDoubleReader     thrpt    5    3900.926 ±  393.212  ops/s
-WriterBenchmark.jdkDoubleIntWriter  thrpt    5   24154.571 ± 5798.525  ops/s
-WriterBenchmark.jdkDoubleWriter     thrpt    5    3426.179 ±  149.114  ops/s
-WriterBenchmark.jdkLongWriter       thrpt    5  108114.384 ± 3921.598  ops/s
-WriterBenchmark.ryuDoubleWriter     thrpt    5   11079.164 ±  253.736  ops/s
-WriterBenchmark.ryuIntWriter        thrpt    5    7430.936 ±   64.940  ops/s
+Benchmark                               Mode  Cnt       Score      Error  Units
+ReaderBenchmark.fastDoubleLongReader   thrpt    5   22858.144 ±  261.718  ops/s
+ReaderBenchmark.fastDoubleReader       thrpt    5   24819.875 ±  368.288  ops/s
+ReaderBenchmark.jdkDoubleReader        thrpt    5    3854.082 ±   67.203  ops/s
+ReaderBenchmark.jdkLongReader          thrpt    5   22811.293 ±  351.590  ops/s
+WriterBenchmark.jdkDoubleIntWriter     thrpt    5   26394.304 ± 1779.867  ops/s
+WriterBenchmark.jdkDoubleWriter        thrpt    5    3439.019 ±   69.317  ops/s
+WriterBenchmark.jdkLongWriter          thrpt    5  109371.088 ± 6345.820  ops/s
+WriterBenchmark.ryuDoubleWriter        thrpt    5   10890.341 ±  116.903  ops/s
+WriterBenchmark.ryuIntWriter           thrpt    5    7395.981 ±   53.028  ops/s
+WriterBenchmark.schubfachDoubleWriter  thrpt    5   12675.343 ±  122.862  ops/s
+WriterBenchmark.schubfachIntWriter     thrpt    5   22488.307 ±   78.873  ops/s
 ```
 
 ## Azul Java 8.0.302 Old Macbook
