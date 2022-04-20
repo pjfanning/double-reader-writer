@@ -36,7 +36,7 @@ public class ReaderTest {
     void verifyFloats() {
         for (int i = 0; i < LEN; i++) {
             double fd = FastDoubleParser.parseDouble(FLOAT_STRINGS[i]);
-            double jd = Double.parseDouble(DOUBLE_STRINGS[i]);
+            double jd = Double.parseDouble(FLOAT_STRINGS[i]);
             assertEquals(jd, fd);
         }
     }
