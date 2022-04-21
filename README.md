@@ -28,15 +28,17 @@ WriterBenchmark.schubfachIntWriter     thrpt    5   22488.307 ±   78.873  ops/s
 
 ```
 Benchmark                               Mode  Cnt      Score       Error  Units
-ReaderBenchmark.fastDoubleLongReader   thrpt    5  17401.416 ±   852.803  ops/s
-ReaderBenchmark.fastDoubleReader       thrpt    5  20016.967 ±   549.814  ops/s
-ReaderBenchmark.jdkDoubleReader        thrpt    5   3381.695 ±    15.922  ops/s
-ReaderBenchmark.jdkLongReader          thrpt    5  15467.008 ±   263.848  ops/s
-WriterBenchmark.jdkDoubleIntWriter     thrpt    5  27664.566 ±   233.965  ops/s
-WriterBenchmark.jdkDoubleWriter        thrpt    5   3406.844 ±   559.611  ops/s
-WriterBenchmark.jdkLongWriter          thrpt    5  39736.881 ± 23287.619  ops/s
-WriterBenchmark.ryuDoubleWriter        thrpt    5   9247.258 ±  5943.127  ops/s
-WriterBenchmark.ryuIntWriter           thrpt    5   7401.490 ±   641.347  ops/s
-WriterBenchmark.schubfachDoubleWriter  thrpt    5   9474.260 ±  4323.468  ops/s
-WriterBenchmark.schubfachIntWriter     thrpt    5  15566.757 ± 14525.793  ops/s
+ReaderBenchmark.fastDoubleFloatReader  thrpt    5  23234.799 ±  7646.048  ops/s
+ReaderBenchmark.fastDoubleLongReader   thrpt    5  13285.999 ±  6325.269  ops/s
+ReaderBenchmark.fastDoubleReader       thrpt    5  11968.453 ± 17433.848  ops/s
+ReaderBenchmark.jdkDoubleReader        thrpt    5   2585.516 ±  1037.001  ops/s
+ReaderBenchmark.jdkFloatReader         thrpt    5   5965.517 ±  1139.410  ops/s
+ReaderBenchmark.jdkLongReader          thrpt    5   9516.470 ±  9143.042  ops/s
+WriterBenchmark.jdkDoubleIntWriter     thrpt    5  10986.540 ± 20767.640  ops/s
+WriterBenchmark.jdkDoubleWriter        thrpt    5   1360.805 ±  2993.175  ops/s
+WriterBenchmark.jdkLongWriter          thrpt    5  26533.555 ± 36950.402  ops/s
+WriterBenchmark.ryuDoubleWriter        thrpt    5   9058.091 ±  3430.143  ops/s
+WriterBenchmark.ryuIntWriter           thrpt    5   4543.158 ±  4702.344  ops/s
+WriterBenchmark.schubfachDoubleWriter  thrpt    5   8562.764 ±  2854.817  ops/s
+WriterBenchmark.schubfachIntWriter     thrpt    5  15234.208 ±  4152.243  ops/s
 ```
