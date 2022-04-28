@@ -9,18 +9,20 @@ Also, seems worthwhile to use newer JDKs regardless of whether that is with JDK 
 ## Zulu Java 17.0.2 Old Macbook
 
 ```
-Benchmark                               Mode  Cnt       Score      Error  Units
-ReaderBenchmark.fastDoubleLongReader   thrpt    5   22858.144 ±  261.718  ops/s
-ReaderBenchmark.fastDoubleReader       thrpt    5   24819.875 ±  368.288  ops/s
-ReaderBenchmark.jdkDoubleReader        thrpt    5    3854.082 ±   67.203  ops/s
-ReaderBenchmark.jdkLongReader          thrpt    5   22811.293 ±  351.590  ops/s
-WriterBenchmark.jdkDoubleIntWriter     thrpt    5   26394.304 ± 1779.867  ops/s
-WriterBenchmark.jdkDoubleWriter        thrpt    5    3439.019 ±   69.317  ops/s
-WriterBenchmark.jdkLongWriter          thrpt    5  109371.088 ± 6345.820  ops/s
-WriterBenchmark.ryuDoubleWriter        thrpt    5   10890.341 ±  116.903  ops/s
-WriterBenchmark.ryuIntWriter           thrpt    5    7395.981 ±   53.028  ops/s
-WriterBenchmark.schubfachDoubleWriter  thrpt    5   12675.343 ±  122.862  ops/s
-WriterBenchmark.schubfachIntWriter     thrpt    5   22488.307 ±   78.873  ops/s
+Benchmark                               Mode  Cnt       Score       Error  Units
+ReaderBenchmark.fastDoubleLongReader   thrpt    5   21539.632 ±  3775.796  ops/s
+ReaderBenchmark.fastDoubleReader       thrpt    5   23205.794 ±  5158.088  ops/s
+ReaderBenchmark.fastFloatReader        thrpt    5   26081.041 ±  6600.205  ops/s
+ReaderBenchmark.jdkDoubleReader        thrpt    5    2685.878 ±   901.350  ops/s
+ReaderBenchmark.jdkFloatReader         thrpt    5    8087.257 ±  4846.451  ops/s
+ReaderBenchmark.jdkLongReader          thrpt    5   23447.193 ±   320.989  ops/s
+WriterBenchmark.jdkDoubleIntWriter     thrpt    5   26920.490 ±   652.261  ops/s
+WriterBenchmark.jdkDoubleWriter        thrpt    5    3676.989 ±    47.458  ops/s
+WriterBenchmark.jdkLongWriter          thrpt    5  113002.108 ±  1435.419  ops/s
+WriterBenchmark.ryuDoubleWriter        thrpt    5   11283.349 ±   162.625  ops/s
+WriterBenchmark.ryuIntWriter           thrpt    5    7250.325 ±  1008.664  ops/s
+WriterBenchmark.schubfachDoubleWriter  thrpt    5    9271.144 ± 10743.030  ops/s
+WriterBenchmark.schubfachIntWriter     thrpt    5   20106.119 ±  2386.457  ops/s
 ```
 
 ## Zulu Java 8.0.332 Old Macbook
