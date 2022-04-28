@@ -6,8 +6,7 @@ So far, [FastDoubleParser](https://github.com/FasterXML/jackson-core/pull/747) l
 Also, seems worthwhile to use newer JDKs regardless of whether that is with JDK read/writing or with the custom implementations.
 
 
-## Azul Java 17.0.2 Old Macbook
-
+## Zulu Java 17.0.2 Old Macbook
 
 ```
 Benchmark                               Mode  Cnt       Score      Error  Units
@@ -24,21 +23,21 @@ WriterBenchmark.schubfachDoubleWriter  thrpt    5   12675.343 ±  122.862  ops/s
 WriterBenchmark.schubfachIntWriter     thrpt    5   22488.307 ±   78.873  ops/s
 ```
 
-## Azul Java 8.0.302 Old Macbook
+## Zulu Java 8.0.332 Old Macbook
 
 ```
-Benchmark                               Mode  Cnt      Score       Error  Units
-ReaderBenchmark.fastDoubleFloatReader  thrpt    5  23234.799 ±  7646.048  ops/s
-ReaderBenchmark.fastDoubleLongReader   thrpt    5  13285.999 ±  6325.269  ops/s
-ReaderBenchmark.fastDoubleReader       thrpt    5  11968.453 ± 17433.848  ops/s
-ReaderBenchmark.jdkDoubleReader        thrpt    5   2585.516 ±  1037.001  ops/s
-ReaderBenchmark.jdkFloatReader         thrpt    5   5965.517 ±  1139.410  ops/s
-ReaderBenchmark.jdkLongReader          thrpt    5   9516.470 ±  9143.042  ops/s
-WriterBenchmark.jdkDoubleIntWriter     thrpt    5  10986.540 ± 20767.640  ops/s
-WriterBenchmark.jdkDoubleWriter        thrpt    5   1360.805 ±  2993.175  ops/s
-WriterBenchmark.jdkLongWriter          thrpt    5  26533.555 ± 36950.402  ops/s
-WriterBenchmark.ryuDoubleWriter        thrpt    5   9058.091 ±  3430.143  ops/s
-WriterBenchmark.ryuIntWriter           thrpt    5   4543.158 ±  4702.344  ops/s
-WriterBenchmark.schubfachDoubleWriter  thrpt    5   8562.764 ±  2854.817  ops/s
-WriterBenchmark.schubfachIntWriter     thrpt    5  15234.208 ±  4152.243  ops/s
+Benchmark                               Mode  Cnt      Score      Error  Units
+ReaderBenchmark.fastDoubleLongReader   thrpt    5  14313.322 ±  799.185  ops/s
+ReaderBenchmark.fastDoubleReader       thrpt    5  13457.506 ± 5202.269  ops/s
+ReaderBenchmark.fastFloatReader        thrpt    5  19794.857 ± 3111.309  ops/s
+ReaderBenchmark.jdkDoubleReader        thrpt    5   1704.180 ± 2562.849  ops/s
+ReaderBenchmark.jdkFloatReader         thrpt    5   3835.529 ± 6550.398  ops/s
+ReaderBenchmark.jdkLongReader          thrpt    5  13130.709 ± 3968.561  ops/s
+WriterBenchmark.jdkDoubleIntWriter     thrpt    5  25296.327 ± 3358.200  ops/s
+WriterBenchmark.jdkDoubleWriter        thrpt    5   3260.515 ±  190.571  ops/s
+WriterBenchmark.jdkLongWriter          thrpt    5  42692.502 ± 5502.388  ops/s
+WriterBenchmark.ryuDoubleWriter        thrpt    5  10026.740 ± 8484.169  ops/s
+WriterBenchmark.ryuIntWriter           thrpt    5   6385.586 ±  819.930  ops/s
+WriterBenchmark.schubfachDoubleWriter  thrpt    5   9359.569 ±  814.004  ops/s
+WriterBenchmark.schubfachIntWriter     thrpt    5  15515.109 ± 1588.893  ops/s
 ```
