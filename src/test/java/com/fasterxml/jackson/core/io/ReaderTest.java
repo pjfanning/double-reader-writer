@@ -1,6 +1,7 @@
 package com.fasterxml.jackson.core.io;
 
-import com.fasterxml.jackson.core.io.numberreader.FastDoubleParser;
+import com.fasterxml.jackson.core.io.doubleparser.FastDoubleParser;
+import com.fasterxml.jackson.core.io.doubleparser.FastFloatParser;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -35,9 +36,9 @@ public class ReaderTest {
     @Test
     void verifyFloats() {
         for (int i = 0; i < LEN; i++) {
-            double fd = FastDoubleParser.parseDouble(FLOAT_STRINGS[i]);
-            double jd = Double.parseDouble(FLOAT_STRINGS[i]);
-            assertEquals(jd, fd);
+            float ff = FastFloatParser.parseFloat(FLOAT_STRINGS[i]);
+            float jf = Float.parseFloat(FLOAT_STRINGS[i]);
+            assertEquals(jf, ff);
         }
     }
 

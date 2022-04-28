@@ -1,6 +1,7 @@
 package com.fasterxml.jackson.core.io;
 
-import com.fasterxml.jackson.core.io.numberreader.FastDoubleParser;
+import com.fasterxml.jackson.core.io.doubleparser.FastDoubleParser;
+import com.fasterxml.jackson.core.io.doubleparser.FastFloatParser;
 import org.openjdk.jmh.annotations.Benchmark;
 
 import java.util.Random;
@@ -42,9 +43,9 @@ public class ReaderBenchmark extends BenchmarkLauncher {
     }
 
     @Benchmark
-    public void fastDoubleFloatReader() {
+    public void fastFloatReader() {
         for (int i = 0; i < LEN; i++) {
-            float f = (float)FastDoubleParser.parseDouble(FLOAT_STRINGS[i]);
+            float f = FastFloatParser.parseFloat(FLOAT_STRINGS[i]);
         }
     }
 
