@@ -6,7 +6,7 @@ So far, [FastDoubleParser](https://github.com/FasterXML/jackson-core/pull/747) l
 Also, seems worthwhile to use newer JDKs regardless of whether that is with JDK read/writing or with the custom implementations.
 
 
-## Zulu Java 17.0.2 Old Macbook
+## Zulu Java 17.0.3 Old Macbook
 
 ```
 Benchmark                               Mode  Cnt       Score       Error  Units
