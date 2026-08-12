@@ -9,7 +9,6 @@ Also, seems worthwhile to use newer JDKs regardless of whether that is with JDK 
 ## Temurin Java 17.0.19 Old Macbook
 
 ```
-Benchmark                               Mode  Cnt       Score       Error  Units
 Benchmark                               Mode  Cnt   Score   Error   Units
 WriterBenchmark.jdkDoubleWriter        thrpt    3   3.360 ± 0.212  ops/ms
 WriterBenchmark.ryuDoubleWriter        thrpt    3  10.690 ± 1.252  ops/ms
@@ -20,7 +19,6 @@ WriterBenchmark.xjbDoubleWriter        thrpt    3  13.198 ± 7.947  ops/ms
 ## Temurin Java 25.0.3 Old Macbook
 
 ```
-Benchmark                               Mode  Cnt      Score      Error  Units
 Benchmark                               Mode  Cnt   Score   Error   Units
 WriterBenchmark.jdkDoubleWriter        thrpt    3  14.323 ± 3.257  ops/ms
 WriterBenchmark.ryuDoubleWriter        thrpt    3   9.351 ± 5.853  ops/ms
