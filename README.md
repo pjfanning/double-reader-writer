@@ -5,8 +5,9 @@ So far, [FastDoubleParser](https://github.com/FasterXML/jackson-core/pull/747) l
 
 Also, seems worthwhile to use newer JDKs regardless of whether that is with JDK read/writing or with the custom implementations.
 
+## Recent WriterBenchmark Results to compare XJB algorithm to others
 
-## Temurin Java 17.0.19 Old Macbook
+### Temurin Java 17.0.19 Old Macbook
 
 ```
 Benchmark                               Mode  Cnt   Score   Error   Units
@@ -16,7 +17,7 @@ WriterBenchmark.schubfachDoubleWriter  thrpt    3  14.107 ± 7.175  ops/ms
 WriterBenchmark.xjbDoubleWriter        thrpt    3  13.198 ± 7.947  ops/ms
 ```
 
-## Temurin Java 25.0.3 Old Macbook
+### Temurin Java 25.0.3 Old Macbook
 
 ```
 Benchmark                               Mode  Cnt   Score   Error   Units
