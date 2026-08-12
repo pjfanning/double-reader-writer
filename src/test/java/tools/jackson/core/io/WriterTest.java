@@ -2,6 +2,7 @@ package tools.jackson.core.io;
 
 import tools.jackson.core.io.numberwriter.RyuDouble;
 import tools.jackson.core.io.numberwriter.RyuFloat;
+import tools.jackson.core.io.numberwriter.XJBWriter;
 import tools.jackson.core.io.schubfach.DoubleToDecimal;
 import tools.jackson.core.io.schubfach.FloatToDecimal;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,14 @@ public class WriterTest {
     }
 
     @Test
+    void verifyXJBFDoubles() {
+        for (int i = 0; i < LEN; i++) {
+            String xjb = XJBWriter.toString(DOUBLES[i]);
+            assertEquals(DOUBLES[i], Double.parseDouble(xjb));
+        }
+    }
+
+    @Test
     void verifyRyuDoubles() {
         for (int i = 0; i < LEN; i++) {
             String ryu = RyuDouble.doubleToString(DOUBLES[i]);
@@ -52,6 +61,14 @@ public class WriterTest {
         for (int i = 0; i < LEN; i++) {
             String sf = FloatToDecimal.toString(FLOATS[i]);
             assertEquals(FLOATS[i], Float.parseFloat(sf));
+        }
+    }
+
+    @Test
+    void verifyXJBFloats() {
+        for (int i = 0; i < LEN; i++) {
+            String xjb = XJBWriter.toString(FLOATS[i]);
+            assertEquals(FLOATS[i], Float.parseFloat(xjb));
         }
     }
 
