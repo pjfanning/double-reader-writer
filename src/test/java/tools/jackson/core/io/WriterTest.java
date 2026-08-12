@@ -1,9 +1,9 @@
-package com.fasterxml.jackson.core.io;
+package tools.jackson.core.io;
 
-import com.fasterxml.jackson.core.io.numberwriter.RyuDouble;
-import com.fasterxml.jackson.core.io.numberwriter.RyuFloat;
-import com.fasterxml.jackson.core.io.schubfach.DoubleToDecimal;
-import com.fasterxml.jackson.core.io.schubfach.FloatToDecimal;
+import tools.jackson.core.io.numberwriter.RyuDouble;
+import tools.jackson.core.io.numberwriter.RyuFloat;
+import tools.jackson.core.io.schubfach.DoubleToDecimal;
+import tools.jackson.core.io.schubfach.FloatToDecimal;
 import org.junit.jupiter.api.Test;
 
 import java.util.Random;

@@ -1,8 +1,9 @@
-package com.fasterxml.jackson.core.io;
+package tools.jackson.core.io;
 
-import com.fasterxml.jackson.core.io.doubleparser.FastDoubleParser;
-import com.fasterxml.jackson.core.io.doubleparser.FastFloatParser;
+import ch.randelshofer.fastdoubleparser.JavaDoubleParser;
+import ch.randelshofer.fastdoubleparser.JavaFloatParser;
 import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.infra.Blackhole;
 
 import java.util.Random;
 
@@ -22,44 +23,44 @@ public class ReaderBenchmark extends BenchmarkLauncher {
     }
 
     @Benchmark
-    public void jdkDoubleReader() {
+    public void jdkDoubleReader(Blackhole bh) {
         for (int i = 0; i < LEN; i++) {
-            Double.parseDouble(DOUBLE_STRINGS[i]);
+            bh.consume(Double.parseDouble(DOUBLE_STRINGS[i]));
         }
     }
 
     @Benchmark
-    public void jdkFloatReader() {
+    public void jdkFloatReader(Blackhole bh) {
         for (int i = 0; i < LEN; i++) {
-            Float.parseFloat(FLOAT_STRINGS[i]);
+            bh.consume(Float.parseFloat(FLOAT_STRINGS[i]));
         }
     }
 
     @Benchmark
-    public void fastDoubleReader() {
+    public void fastDoubleReader(Blackhole bh) {
         for (int i = 0; i < LEN; i++) {
-            FastDoubleParser.parseDouble(DOUBLE_STRINGS[i]);
+            bh.consume(JavaDoubleParser.parseDouble(DOUBLE_STRINGS[i]));
         }
     }
 
     @Benchmark
-    public void fastFloatReader() {
+    public void fastFloatReader(Blackhole bh) {
         for (int i = 0; i < LEN; i++) {
-            float f = FastFloatParser.parseFloat(FLOAT_STRINGS[i]);
+            bh.consume(JavaFloatParser.parseFloat(FLOAT_STRINGS[i]));
         }
     }
 
     @Benchmark
-    public void jdkLongReader() {
+    public void jdkLongReader(Blackhole bh) {
         for (int i = 0; i < LEN; i++) {
-            Long.parseLong(LONG_STRINGS[i]);
+            bh.consume(Long.parseLong(LONG_STRINGS[i]));
         }
     }
 
     @Benchmark
-    public void fastDoubleLongReader() {
+    public void fastDoubleLongReader(Blackhole bh) {
         for (int i = 0; i < LEN; i++) {
-            FastDoubleParser.parseDouble(LONG_STRINGS[i]);
+            bh.consume(JavaDoubleParser.parseDouble(LONG_STRINGS[i]));
         }
     }
 }

@@ -1,7 +1,7 @@
-package com.fasterxml.jackson.core.io;
+package tools.jackson.core.io;
 
-import com.fasterxml.jackson.core.io.doubleparser.FastDoubleParser;
-import com.fasterxml.jackson.core.io.doubleparser.FastFloatParser;
+import ch.randelshofer.fastdoubleparser.JavaDoubleParser;
+import ch.randelshofer.fastdoubleparser.JavaFloatParser;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -27,7 +27,7 @@ public class ReaderTest {
     @Test
     void verifyDoubles() {
         for (int i = 0; i < LEN; i++) {
-            double fd = FastDoubleParser.parseDouble(DOUBLE_STRINGS[i]);
+            double fd = JavaDoubleParser.parseDouble(DOUBLE_STRINGS[i]);
             double jd = Double.parseDouble(DOUBLE_STRINGS[i]);
             assertEquals(jd, fd);
         }
@@ -36,7 +36,7 @@ public class ReaderTest {
     @Test
     void verifyFloats() {
         for (int i = 0; i < LEN; i++) {
-            float ff = FastFloatParser.parseFloat(FLOAT_STRINGS[i]);
+            float ff = JavaFloatParser.parseFloat(FLOAT_STRINGS[i]);
             float jf = Float.parseFloat(FLOAT_STRINGS[i]);
             assertEquals(jf, ff);
         }
@@ -46,7 +46,7 @@ public class ReaderTest {
     @Test
     void verifyLongs() {
         for (int i = 0; i < LEN; i++) {
-            long fl = (long)FastDoubleParser.parseDouble(LONG_STRINGS[i]);
+            long fl = (long)JavaDoubleParser.parseDouble(LONG_STRINGS[i]);
             long jl = Long.parseLong(LONG_STRINGS[i]);
             assertEquals(jl, fl, "expected " + LONG_STRINGS[i]);
         }

@@ -1,4 +1,4 @@
-package com.fasterxml.jackson.core.io;
+package tools.jackson.core.io;
 
 import org.junit.jupiter.api.Test;
 import org.openjdk.jmh.annotations.BenchmarkMode;
