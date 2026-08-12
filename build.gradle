@@ -24,3 +24,12 @@ dependencies {
 test {
     useJUnitPlatform()
 }
+
+jmh {
+    includes = ['.WriterBenchmark*']
+    warmupIterations = 3
+    iterations = 3
+    fork = 1
+    timeUnit = 'ms'
+    resultFormat = 'JSON'
+}
