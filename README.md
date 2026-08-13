@@ -32,8 +32,12 @@ WriterBenchmark.xjbDoubleWriter        thrpt    3  14.432 ± 1.301  ops/ms
 ### Temurin Java 25.0.3 Old Macbook
 
 ```
-Benchmark                                         Mode  Cnt    Score    Error   Units
-JsonGeneratorBenchmark.schubfachWriteDoubleArray thrpt    3   93.082 ± 38.279  ops/ms
-JsonGeneratorBenchmark.pr1657WriteDoubleArray    thrpt    3  146.721 ± 78.125  ops/ms
-JsonGeneratorBenchmark.xjbWriteDoubleArray       thrpt    3  189.703 ± 59.990  ops/ms
+Benchmark                                          Mode  Cnt    Score    Error   Units
+JsonGeneratorBenchmark.baselineWriteDoubleArray   thrpt    3   93.372 ± 48.983  ops/ms
+JsonGeneratorBenchmark.schubfachWriteDoubleArray  thrpt    3   93.082 ± 38.279  ops/ms
+JsonGeneratorBenchmark.pr1657WriteDoubleArray     thrpt    3  146.721 ± 78.125  ops/ms
+JsonGeneratorBenchmark.xjbWriteDoubleArray        thrpt    3  189.703 ± 59.990  ops/ms
 ```
+
+On Java 17.0.19, results are very similar but baselineWriteDoubleArray is a good deal slower.
+
