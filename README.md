@@ -26,3 +26,14 @@ WriterBenchmark.ryuDoubleWriter        thrpt    3   9.351 ± 5.853  ops/ms
 WriterBenchmark.schubfachDoubleWriter  thrpt    3  13.915 ± 0.990  ops/ms
 WriterBenchmark.xjbDoubleWriter        thrpt    3  14.432 ± 1.301  ops/ms
 ```
+
+## JsonGeneratorBenchmark 
+
+### Temurin Java 25.0.3 Old Macbook
+
+```
+Benchmark                                         Mode  Cnt    Score    Error   Units
+JsonGeneratorBenchmark.schubfachWriteDoubleArray thrpt    3   93.082 ± 38.279  ops/ms
+JsonGeneratorBenchmark.pr1657WriteDoubleArray    thrpt    3  146.721 ± 78.125  ops/ms
+JsonGeneratorBenchmark.xjbWriteDoubleArray       thrpt    3  189.703 ± 59.990  ops/ms
+```
