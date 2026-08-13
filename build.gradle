@@ -26,7 +26,7 @@ test {
 }
 
 jmh {
-    includes = ['.WriterBenchmark*']
+    includes = ['.JsonGeneratorBenchmark*']
     warmupIterations = 3
     iterations = 3
     fork = 1
