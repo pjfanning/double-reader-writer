@@ -18,7 +18,8 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
     private static final int NUM_DOUBLES = 100;
     private static final double[] DOUBLES = new double[NUM_DOUBLES];
     private static final JsonFactoryHelper JSON_FACTORY = new JsonFactoryHelper();
-    private static final int STD_FEATURES = StreamWriteFeature.collectDefaults()
+    private static final int STD_FEATURES = StreamWriteFeature.collectDefaults();
+    private static final int FAST_STD_FEATURES = STD_FEATURES
             | StreamWriteFeature.USE_FAST_DOUBLE_WRITER.getMask();
 
     static {
@@ -49,11 +50,26 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
     }
 
     @Benchmark
+    public void schubfachWriteDoubleArray(Blackhole bh) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(4096);
+        IOContext ioCtxt = createIOContext(baos);
+        UTF8JsonGenerator gen = JSON_FACTORY.createUtf8Generator(
+                ObjectWriteContext.empty(), ioCtxt, FAST_STD_FEATURES, 0, baos);
+        gen.writeStartArray();
+        for (double d : DOUBLES) {
+            gen.writeNumber(d);
+        }
+        gen.writeEndArray();
+        gen.close();
+        bh.consume(baos.size());
+    }
+
+    @Benchmark
     public void pr1657WriteDoubleArray(Blackhole bh) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream(4096);
         IOContext ioCtxt = createIOContext(baos);
         PR1657JsonGenerator gen = JSON_FACTORY.createPR1657Generator(
-                ObjectWriteContext.empty(), ioCtxt, STD_FEATURES, 0, baos);
+                ObjectWriteContext.empty(), ioCtxt, FAST_STD_FEATURES, 0, baos);
         gen.writeStartArray();
         for (double d : DOUBLES) {
             gen.writeNumber(d);
@@ -68,7 +84,7 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
         ByteArrayOutputStream baos = new ByteArrayOutputStream(4096);
         IOContext ioCtxt = createIOContext(baos);
         XJBJsonGenerator gen = JSON_FACTORY.createXJBGenerator(
-                ObjectWriteContext.empty(), ioCtxt, STD_FEATURES, 0, baos);
+                ObjectWriteContext.empty(), ioCtxt, FAST_STD_FEATURES, 0, baos);
         gen.writeStartArray();
         for (double d : DOUBLES) {
             gen.writeNumber(d);
