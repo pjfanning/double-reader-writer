@@ -1,0 +1,1696 @@
+package tools.jackson.dataformat.cbor.pr752;
+
+import java.io.*;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HashMap;
+
+import tools.jackson.core.*;
+import tools.jackson.core.base.GeneratorBase;
+import tools.jackson.core.io.IOContext;
+import tools.jackson.core.json.DupDetector;
+import tools.jackson.core.util.JacksonFeatureSet;
+import tools.jackson.dataformat.cbor.CBORConstants;
+import tools.jackson.dataformat.cbor.CBORWriteContext;
+import tools.jackson.dataformat.cbor.CBORWriteFeature;
+import tools.jackson.dataformat.cbor.PackageVersion;
+
+import static tools.jackson.dataformat.cbor.CBORConstants.*;
+
+/**
+ * {@link JsonGenerator} implementation that writes CBOR encoded content.
+ * Copied from <a href="https://github.com/FasterXML/jackson-dataformats-binary/pull/752">PR #752</a>
+ * which adds VarHandle-based multi-byte writes for improved performance.
+ *
+ * @author Tatu Saloranta
+ */
+public class PR752CBORGenerator extends GeneratorBase
+{
+    private final static int[] NO_INTS = new int[0];
+
+    private final static BigInteger BI_MINUS_ONE = BigInteger.ONE.negate();
+
+    /**
+     * Let's ensure that we have big enough output buffer because of safety
+     * margins we need for UTF-8 encoding.
+     */
+    protected final static int BYTE_BUFFER_FOR_OUTPUT = 16000;
+
+    /**
+     * The replacement character to use to fix invalid Unicode sequences
+     * (mismatched surrogate pair).
+     */
+    protected final static int REPLACEMENT_CHAR = 0xfffd;
+
+    /**
+     * Longest char chunk we will output is chosen so that it is guaranteed to
+     * fit in an empty buffer even if everything encoded in 3-byte sequences;
+     * but also fit two full chunks in case of single-byte (ascii) output.
+     */
+    private final static int MAX_LONG_STRING_CHARS = (BYTE_BUFFER_FOR_OUTPUT / 4) - 4;
+
+    /**
+     * This is the worst case length (in bytes) of maximum chunk we ever write.
+     */
+    private final static int MAX_LONG_STRING_BYTES = (MAX_LONG_STRING_CHARS * 3) + 3;
+
+    /**
+     * To simplify certain operations, we require output buffer length to allow
+     * outputting of contiguous 256 character UTF-8 encoded String value. Length
+     * of the longest UTF-8 code point (from Java char) is 3 bytes, and we need
+     * both initial token byte and single-byte end marker so we get following
+     * value.
+     * <p>
+     * Note: actually we could live with shorter one; absolute minimum would be
+     * for encoding 64-character Strings.
+     */
+    private final static int MIN_BUFFER_LENGTH = (3 * 256) + 2;
+
+    /**
+     * Special value that is use to keep tracks of arrays and maps opened with infinite length
+     */
+    private final static int INDEFINITE_LENGTH = -2; // just to allow -1 as marker for "one too many"
+
+    /*
+    /**********************************************************************
+    /* Configuration
+    /**********************************************************************
+     */
+
+    protected final OutputStream _out;
+
+    /**
+     * Bit flag composed of bits that indicate which
+     * {@link CBORWriteFeature}s are enabled.
+     */
+    protected final int _formatFeatures;
+
+    protected final boolean _cfgMinimalInts;
+
+    protected final boolean _cfgMinimalDoubles;
+
+    /*
+    /**********************************************************************
+    /* Output state
+    /**********************************************************************
+     */
+
+    protected CBORWriteContext _streamWriteContext;
+
+    /*
+    /**********************************************************************
+    /* Output buffering
+    /**********************************************************************
+     */
+
+    /**
+     * Intermediate buffer in which contents are buffered before being written
+     * using {@link #_out}.
+     */
+    protected byte[] _outputBuffer;
+
+    /**
+     * Pointer to the next available byte in {@link #_outputBuffer}
+     */
+    protected int _outputTail = 0;
+
+    /**
+     * Offset to index after the last valid index in {@link #_outputBuffer}.
+     * Typically same as length of the buffer.
+     */
+    protected final int _outputEnd;
+
+    /**
+     * Intermediate buffer in which characters of a String are copied before
+     * being encoded.
+     */
+    protected char[] _charBuffer;
+
+    protected final int _charBufferLength;
+
+    /**
+     * Let's keep track of how many bytes have been output, may prove useful
+     * when debugging. This does <b>not</b> include bytes buffered in the output
+     * buffer, just bytes that have been written using underlying stream writer.
+     */
+    protected int _bytesWritten;
+
+    /*
+    /**********************************************************************
+    /* Tracking of remaining elements to write
+    /**********************************************************************
+     */
+
+    protected int[] _elementCounts = NO_INTS;
+
+    protected int _elementCountsPtr;
+
+    /**
+     * Number of elements remaining in the current complex structure (if any),
+     * when writing defined-length Arrays, Objects; marker {code INDEFINITE_LENGTH}
+     * otherwise.
+     */
+    protected int _currentRemainingElements = INDEFINITE_LENGTH;
+
+    /*
+    /**********************************************************************
+    /* Other configuration
+    /**********************************************************************
+     */
+
+    /**
+     * Flag that indicates whether the output buffer is recyclable (and needs to
+     * be returned to recycler once we are done) or not.
+     */
+    protected boolean _bufferRecyclable;
+
+    /**
+     * Table of previously referenced text and binary strings when the STRINGREF feature is used.
+     */
+    protected HashMap<Object, Integer> _stringRefs;
+
+    /*
+    /**********************************************************************
+    /* Life-cycle
+    /**********************************************************************
+     */
+
+    public PR752CBORGenerator(ObjectWriteContext writeCtxt, IOContext ioCtxt,
+            int streamWriteFeatures, int formatFeatures,
+            OutputStream out)
+    {
+        super(writeCtxt, ioCtxt, streamWriteFeatures);
+        _formatFeatures = formatFeatures;
+        DupDetector dups = StreamWriteFeature.STRICT_DUPLICATE_DETECTION.enabledIn(streamWriteFeatures)
+                ? DupDetector.rootDetector(this)
+                : null;
+        _streamWriteContext = CBORWriteContext.createRootContext(dups);
+        _cfgMinimalInts = CBORWriteFeature.WRITE_MINIMAL_INTS.enabledIn(formatFeatures);
+        _cfgMinimalDoubles = CBORWriteFeature.WRITE_MINIMAL_DOUBLES.enabledIn(formatFeatures);
+        _out = out;
+        _bufferRecyclable = true;
+        _stringRefs = CBORWriteFeature.STRINGREF.enabledIn(formatFeatures) ? new HashMap<>() : null;
+        _outputBuffer = ioCtxt.allocWriteEncodingBuffer(BYTE_BUFFER_FOR_OUTPUT);
+        _outputEnd = _outputBuffer.length;
+        _charBuffer = ioCtxt.allocConcatBuffer();
+        _charBufferLength = _charBuffer.length;
+        // let's just sanity check to prevent nasty odd errors
+        if (_outputEnd < MIN_BUFFER_LENGTH) {
+            throw new IllegalStateException("Internal encoding buffer length ("
+                    + _outputEnd + ") too short, must be at least "
+                    + MIN_BUFFER_LENGTH);
+        }
+    }
+
+    /**
+     * Alternative constructor that may be used to feed partially initialized content.
+     *
+     * @param outputBuffer
+     *            Buffer to use for output before flushing to the underlying stream
+     * @param offset
+     *            Offset pointing past already buffered content; that is, number
+     *            of bytes of valid content to output, within buffer.
+     */
+    public PR752CBORGenerator(ObjectWriteContext writeCtxt, IOContext ioCtxt,
+            int streamWriteFeatures, int formatFeatures,
+            OutputStream out, byte[] outputBuffer,
+            int offset, boolean bufferRecyclable)
+    {
+        super(writeCtxt, ioCtxt, streamWriteFeatures);
+        _formatFeatures = formatFeatures;
+        DupDetector dups = StreamWriteFeature.STRICT_DUPLICATE_DETECTION.enabledIn(streamWriteFeatures)
+                ? DupDetector.rootDetector(this)
+                : null;
+        _streamWriteContext = CBORWriteContext.createRootContext(dups);
+        _cfgMinimalInts = CBORWriteFeature.WRITE_MINIMAL_INTS.enabledIn(formatFeatures);
+        _cfgMinimalDoubles = CBORWriteFeature.WRITE_MINIMAL_DOUBLES.enabledIn(formatFeatures);
+        _out = out;
+        _bufferRecyclable = bufferRecyclable;
+        _outputTail = offset;
+        _outputBuffer = outputBuffer;
+        _stringRefs = CBORWriteFeature.STRINGREF.enabledIn(formatFeatures) ? new HashMap<>() : null;
+        _outputEnd = _outputBuffer.length;
+        _charBuffer = ioCtxt.allocConcatBuffer();
+        _charBufferLength = _charBuffer.length;
+        // let's just sanity check to prevent nasty odd errors
+        if (_outputEnd < MIN_BUFFER_LENGTH) {
+            throw new IllegalStateException("Internal encoding buffer length ("
+                    + _outputEnd + ") too short, must be at least "
+                    + MIN_BUFFER_LENGTH);
+        }
+    }
+
+    /*
+    /**********************************************************************
+    /* Versioned
+    /**********************************************************************
+     */
+
+    @Override
+    public Version version() {
+        return PackageVersion.VERSION;
+    }
+
+    /*
+    /**********************************************************************
+    /* Capability introspection
+    /**********************************************************************
+     */
+
+    @Override
+    public JacksonFeatureSet<StreamWriteCapability> streamWriteCapabilities() {
+        return DEFAULT_BINARY_WRITE_CAPABILITIES;
+    }
+
+    /*
+    /**********************************************************************
+    /* Overridden methods, configuration
+    /**********************************************************************
+     */
+
+    @Override
+    public Object streamWriteOutputTarget() {
+        return _out;
+    }
+
+    @Override
+    public int streamWriteOutputBuffered() {
+        return _outputTail;
+    }
+
+    @Override
+    public PrettyPrinter getPrettyPrinter() {
+        return null;
+    }
+
+    /*
+    /**********************************************************************
+    /* Overridden methods, output context (and related)
+    /**********************************************************************
+     */
+
+    @Override
+    public Object currentValue() {
+        return _streamWriteContext.currentValue();
+    }
+
+    @Override
+    public void assignCurrentValue(Object v) {
+        _streamWriteContext.assignCurrentValue(v);
+    }
+
+    @Override
+    public TokenStreamContext streamWriteContext() {
+        return _streamWriteContext;
+    }
+
+    /*
+    /**********************************************************************
+    /* Extended API, configuration
+    /**********************************************************************
+     */
+
+    public final boolean isEnabled(CBORWriteFeature f) {
+        return (_formatFeatures & f.getMask()) != 0;
+    }
+
+    /*
+    /**********************************************************************
+    /* Overridden methods, write methods
+    /**********************************************************************
+     */
+
+    @Override
+    public JsonGenerator writeName(String name) throws JacksonException {
+        if (!_streamWriteContext.writeName(name)) {
+            _reportError("Can not write a property name, expecting a value");
+        }
+        _writeString(name);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeName(SerializableString name)
+            throws JacksonException {
+        // Object is a value, need to verify it's allowed
+        if (!_streamWriteContext.writeName(name.getValue())) {
+            _reportError("Can not write a property name, expecting a value");
+        }
+        byte[] raw = name.asUnquotedUTF8();
+        final int len = raw.length;
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return this;
+        } else if (_stringRefs != null) {
+            // Check for a string reference.
+            String str = name.getValue();
+            Integer index = _stringRefs.get(str);
+            if (index != null) {
+                writeTag(TAG_ID_STRINGREF);
+                _writeIntMinimal(PREFIX_TYPE_INT_POS, index);
+                return this;
+            } else if (shouldReferenceString(_stringRefs.size(), len)) {
+                _stringRefs.put(str, _stringRefs.size());
+            }
+        }
+        _writeLengthMarker(PREFIX_TYPE_TEXT, len);
+        _writeBytes(raw, 0, len);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writePropertyId(long id) throws JacksonException {
+        if (!_streamWriteContext.writePropertyId(id)) {
+            _reportError("Can not write a property id, expecting a value");
+        }
+        _writeLongNoCheck(id);
+        return this;
+    }
+
+    /*
+    /**********************************************************************
+    /* Output method implementations, structural
+    /**********************************************************************
+     */
+
+    @Override
+    public JsonGenerator writeStartArray() throws JacksonException {
+        _verifyValueWrite("start an array");
+        _streamWriteContext = _streamWriteContext.createChildArrayContext(null);
+        streamWriteConstraints().validateNestingDepth(_streamWriteContext.getNestingDepth());
+        if (_elementCountsPtr > 0) {
+            _pushRemainingElements();
+        }
+        _currentRemainingElements = INDEFINITE_LENGTH;
+        _writeByte(BYTE_ARRAY_INDEFINITE);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeStartArray(Object currValue) throws JacksonException {
+        _verifyValueWrite("start an array");
+        _streamWriteContext = _streamWriteContext.createChildArrayContext(currValue);
+        streamWriteConstraints().validateNestingDepth(_streamWriteContext.getNestingDepth());
+        if (_elementCountsPtr > 0) {
+            _pushRemainingElements();
+        }
+        _currentRemainingElements = INDEFINITE_LENGTH;
+        _writeByte(BYTE_ARRAY_INDEFINITE);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeStartArray(Object forValue, int elementsToWrite) throws JacksonException {
+        _verifyValueWrite("start an array");
+        _streamWriteContext = _streamWriteContext.createChildArrayContext(forValue);
+        streamWriteConstraints().validateNestingDepth(_streamWriteContext.getNestingDepth());
+        _pushRemainingElements();
+        _currentRemainingElements = elementsToWrite;
+        _writeLengthMarker(PREFIX_TYPE_ARRAY, elementsToWrite);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeEndArray() throws JacksonException {
+        if (!_streamWriteContext.inArray()) {
+            _reportError("Current context not Array but "+_streamWriteContext.typeDesc());
+        }
+        closeComplexElement();
+        _streamWriteContext = _streamWriteContext.getParent();
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeStartObject() throws JacksonException {
+        _verifyValueWrite("start an object");
+        _streamWriteContext = _streamWriteContext.createChildObjectContext(null);
+        streamWriteConstraints().validateNestingDepth(_streamWriteContext.getNestingDepth());
+        if (_elementCountsPtr > 0) {
+            _pushRemainingElements();
+        }
+        _currentRemainingElements = INDEFINITE_LENGTH;
+        _writeByte(BYTE_OBJECT_INDEFINITE);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeStartObject(Object forValue) throws JacksonException {
+        _verifyValueWrite("start an object");
+        CBORWriteContext ctxt = _streamWriteContext.createChildObjectContext(forValue);
+        streamWriteConstraints().validateNestingDepth(ctxt.getNestingDepth());
+        _streamWriteContext = ctxt;
+        if (_elementCountsPtr > 0) {
+            _pushRemainingElements();
+        }
+        _currentRemainingElements = INDEFINITE_LENGTH;
+        _writeByte(BYTE_OBJECT_INDEFINITE);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeStartObject(Object forValue, int elementsToWrite) throws JacksonException {
+        _verifyValueWrite("start an object");
+        _streamWriteContext = _streamWriteContext.createChildObjectContext(forValue);
+        streamWriteConstraints().validateNestingDepth(_streamWriteContext.getNestingDepth());
+        _pushRemainingElements();
+        _currentRemainingElements = elementsToWrite;
+        _writeLengthMarker(PREFIX_TYPE_OBJECT, elementsToWrite);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeEndObject() throws JacksonException {
+        if (!_streamWriteContext.inObject()) {
+            _reportError("Current context not Object but "+ _streamWriteContext.typeDesc());
+        }
+        closeComplexElement();
+        _streamWriteContext = _streamWriteContext.getParent();
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeArray(int[] array, int offset, int length) throws JacksonException
+    {
+        _verifyOffsets(array.length, offset, length);
+        _verifyValueWrite("write int array");
+        _writeLengthMarker(PREFIX_TYPE_ARRAY, length);
+
+        if (_cfgMinimalInts) {
+            for (int i = offset, end = offset+length; i < end; ++i) {
+                final int value = array[i];
+                if (value < 0) {
+                    _writeIntMinimal(PREFIX_TYPE_INT_NEG, -value - 1);
+                } else {
+                    _writeIntMinimal(PREFIX_TYPE_INT_POS, value);
+                }
+            }
+        } else {
+            for (int i = offset, end = offset+length; i < end; ++i) {
+                final int value = array[i];
+                if (value < 0) {
+                    _writeIntFull(PREFIX_TYPE_INT_NEG, -value - 1);
+                } else {
+                    _writeIntFull(PREFIX_TYPE_INT_POS, value);
+                }
+            }
+        }
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeArray(long[] array, int offset, int length) throws JacksonException
+    {
+        _verifyOffsets(array.length, offset, length);
+        _verifyValueWrite("write long array");
+        _writeLengthMarker(PREFIX_TYPE_ARRAY, length);
+        for (int i = offset, end = offset+length; i < end; ++i) {
+            _writeLongNoCheck(array[i]);
+        }
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeArray(double[] array, int offset, int length) throws JacksonException
+    {
+        _verifyOffsets(array.length, offset, length);
+        _verifyValueWrite("write double array");
+        _writeLengthMarker(PREFIX_TYPE_ARRAY, length);
+        if (_cfgMinimalDoubles) {
+            for (int i = offset, end = offset+length; i < end; ++i) {
+                _writeDoubleMinimal(array[i]);
+            }
+        } else {
+            for (int i = offset, end = offset+length; i < end; ++i) {
+                _writeDoubleNoCheck(array[i]);
+            }
+        }
+        return this;
+    }
+
+    private final void _pushRemainingElements() {
+        if (_elementCounts.length == _elementCountsPtr) { // initially, as well as if full
+            _elementCounts = Arrays.copyOf(_elementCounts, _elementCounts.length+10);
+        }
+        _elementCounts[_elementCountsPtr++] = _currentRemainingElements;
+    }
+
+    private final void _writeIntMinimal(int markerBase, int i) throws JacksonException
+    {
+        _ensureRoomForOutput(5);
+        byte b0;
+        if (i >= 0) {
+            if (i < 24) {
+                _outputBuffer[_outputTail++] = (byte) (markerBase + i);
+                return;
+            }
+            if (i <= 0xFF) {
+                _outputBuffer[_outputTail++] = (byte) (markerBase + SUFFIX_UINT8_ELEMENTS);
+                _outputBuffer[_outputTail++] = (byte) i;
+                return;
+            }
+            b0 = (byte) i;
+            i >>= 8;
+            if (i <= 0xFF) {
+                _outputBuffer[_outputTail++] = (byte) (markerBase + SUFFIX_UINT16_ELEMENTS);
+                _outputBuffer[_outputTail++] = (byte) i;
+                _outputBuffer[_outputTail++] = b0;
+                return;
+            }
+        } else {
+            b0 = (byte) i;
+            i >>= 8;
+        }
+        _outputBuffer[_outputTail++] = (byte) (markerBase + SUFFIX_UINT32_ELEMENTS);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        _outputBuffer[_outputTail++] = b0;
+    }
+
+    private final void _writeIntFull(int markerBase, int i) throws JacksonException
+    {
+        _ensureRoomForOutput(5);
+
+        _outputBuffer[_outputTail++] = (byte) (markerBase + SUFFIX_UINT32_ELEMENTS);
+        if (CBORVarHandleUtil.INT_BE != null) {
+            CBORVarHandleUtil.INT_BE.set(_outputBuffer, _outputTail, i);
+            _outputTail += 4;
+        } else {
+            _outputBuffer[_outputTail++] = (byte) (i >> 24);
+            _outputBuffer[_outputTail++] = (byte) (i >> 16);
+            _outputBuffer[_outputTail++] = (byte) (i >> 8);
+            _outputBuffer[_outputTail++] = (byte) i;
+        }
+    }
+
+    private final void _writeLongNoCheck(long l) throws JacksonException
+    {
+        if (_cfgMinimalInts) {
+            if (l >= 0) {
+                if (l < 0x100000000L) {
+                    _writeIntMinimal(PREFIX_TYPE_INT_POS, (int) l);
+                    return;
+                }
+            } else if (l >= -0x100000000L) {
+                _writeIntMinimal(PREFIX_TYPE_INT_NEG, (int) (-l - 1));
+                return;
+            }
+        }
+        _ensureRoomForOutput(9);
+        if (l < 0L) {
+            l += 1;
+            l = -l;
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_NEG + SUFFIX_UINT64_ELEMENTS);
+        } else {
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_POS + SUFFIX_UINT64_ELEMENTS);
+        }
+        if (CBORVarHandleUtil.LONG_BE != null) {
+            CBORVarHandleUtil.LONG_BE.set(_outputBuffer, _outputTail, l);
+            _outputTail += 8;
+        } else {
+            int i = (int) (l >> 32);
+            _outputBuffer[_outputTail++] = (byte) (i >> 24);
+            _outputBuffer[_outputTail++] = (byte) (i >> 16);
+            _outputBuffer[_outputTail++] = (byte) (i >> 8);
+            _outputBuffer[_outputTail++] = (byte) i;
+            i = (int) l;
+            _outputBuffer[_outputTail++] = (byte) (i >> 24);
+            _outputBuffer[_outputTail++] = (byte) (i >> 16);
+            _outputBuffer[_outputTail++] = (byte) (i >> 8);
+            _outputBuffer[_outputTail++] = (byte) i;
+        }
+    }
+
+    private final void _writeFloatNoCheck(float f) throws JacksonException {
+        _ensureRoomForOutput(5);
+        _outputBuffer[_outputTail++] = BYTE_FLOAT32;
+        if (CBORVarHandleUtil.FLOAT_BE != null) {
+            CBORVarHandleUtil.FLOAT_BE.set(_outputBuffer, _outputTail, f);
+            _outputTail += 4;
+        } else {
+            int i = Float.floatToRawIntBits(f);
+            _outputBuffer[_outputTail++] = (byte) (i >> 24);
+            _outputBuffer[_outputTail++] = (byte) (i >> 16);
+            _outputBuffer[_outputTail++] = (byte) (i >> 8);
+            _outputBuffer[_outputTail++] = (byte) i;
+        }
+    }
+
+    private final void _writeDoubleNoCheck(double d) throws JacksonException {
+        _ensureRoomForOutput(9);
+        _outputBuffer[_outputTail++] = BYTE_FLOAT64;
+        if (CBORVarHandleUtil.DOUBLE_BE != null) {
+            CBORVarHandleUtil.DOUBLE_BE.set(_outputBuffer, _outputTail, d);
+            _outputTail += 8;
+        } else {
+            long l = Double.doubleToRawLongBits(d);
+            int i = (int) (l >> 32);
+            _outputBuffer[_outputTail++] = (byte) (i >> 24);
+            _outputBuffer[_outputTail++] = (byte) (i >> 16);
+            _outputBuffer[_outputTail++] = (byte) (i >> 8);
+            _outputBuffer[_outputTail++] = (byte) i;
+            i = (int) l;
+            _outputBuffer[_outputTail++] = (byte) (i >> 24);
+            _outputBuffer[_outputTail++] = (byte) (i >> 16);
+            _outputBuffer[_outputTail++] = (byte) (i >> 8);
+            _outputBuffer[_outputTail++] = (byte) i;
+        }
+    }
+
+    private final void _writeDoubleMinimal(double d) throws JacksonException {
+        float f = (float)d;
+        if (f == d) {
+            _writeFloatNoCheck(f);
+        } else {
+            _writeDoubleNoCheck(d);
+        }
+    }
+
+    /*
+    /**********************************************************************
+    /* Output method implementations, textual
+    /**********************************************************************
+     */
+
+    @Override
+    public JsonGenerator writeString(String text) throws JacksonException {
+        if (text == null) {
+            return writeNull();
+        }
+        _verifyValueWrite("write String value");
+        _writeString(text);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeString(SerializableString sstr) throws JacksonException {
+        _verifyValueWrite("write String value");
+        byte[] raw = sstr.asUnquotedUTF8();
+        final int len = raw.length;
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return this;
+        } else if (_stringRefs != null) {
+            String str = sstr.getValue();
+            Integer index = _stringRefs.get(str);
+            if (index != null) {
+                writeTag(TAG_ID_STRINGREF);
+                _writeIntMinimal(PREFIX_TYPE_INT_POS, index);
+                return this;
+            } else if (shouldReferenceString(_stringRefs.size(), len)) {
+                _stringRefs.put(str, _stringRefs.size());
+            }
+        }
+        _writeLengthMarker(PREFIX_TYPE_TEXT, len);
+        _writeBytes(raw, 0, len);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeString(char[] text, int offset, int len)
+            throws JacksonException {
+        _verifyValueWrite("write String value");
+        String str = null;
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return this;
+        } else if (_stringRefs != null && len <= MAX_LONG_STRING_CHARS) {
+            str = new String(text, offset, len);
+            Integer index = _stringRefs.get(str);
+            if (index != null) {
+                writeTag(TAG_ID_STRINGREF);
+                _writeIntMinimal(PREFIX_TYPE_INT_POS, index);
+                return this;
+            }
+        }
+        int actual = _writeString(text, offset, len);
+        if (str != null && shouldReferenceString(_stringRefs.size(), actual)) {
+            _stringRefs.put(str, _stringRefs.size());
+        }
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeRawUTF8String(byte[] raw, int offset, int len)
+            throws JacksonException
+    {
+        _verifyValueWrite("write String value");
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return this;
+        } else if (_stringRefs != null) {
+            String str = new String(raw, offset, len, StandardCharsets.UTF_8);
+            Integer index = _stringRefs.get(str);
+            if (index != null) {
+                writeTag(TAG_ID_STRINGREF);
+                _writeIntMinimal(PREFIX_TYPE_INT_POS, index);
+                return this;
+            } else if (shouldReferenceString(_stringRefs.size(), len)) {
+                _stringRefs.put(str, _stringRefs.size());
+            }
+        }
+        _writeLengthMarker(PREFIX_TYPE_TEXT, len);
+        _writeBytes(raw, offset, len);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeUTF8String(byte[] text, int offset, int len)
+            throws JacksonException {
+        return writeRawUTF8String(text, offset, len);
+    }
+
+    /*
+    /**********************************************************************
+    /* Output method implementations, unprocessed ("raw")
+    /**********************************************************************
+     */
+
+    @Override
+    public JsonGenerator writeRaw(String text) throws JacksonException {
+        throw _notSupported();
+    }
+
+    @Override
+    public JsonGenerator writeRaw(String text, int offset, int len) throws JacksonException {
+        throw _notSupported();
+    }
+
+    @Override
+    public JsonGenerator writeRaw(char[] text, int offset, int len) throws JacksonException {
+        throw _notSupported();
+    }
+
+    @Override
+    public JsonGenerator writeRaw(char c) throws JacksonException {
+        throw _notSupported();
+    }
+
+    @Override
+    public JsonGenerator writeRawValue(String text) throws JacksonException {
+        throw _notSupported();
+    }
+
+    @Override
+    public JsonGenerator writeRawValue(String text, int offset, int len)
+            throws JacksonException {
+        throw _notSupported();
+    }
+
+    @Override
+    public JsonGenerator writeRawValue(char[] text, int offset, int len)
+            throws JacksonException {
+        throw _notSupported();
+    }
+
+    /*
+    /**********************************************************************
+    /* Output method implementations, base64-encoded binary
+    /**********************************************************************
+     */
+
+    @Override
+    public JsonGenerator writeBinary(Base64Variant b64variant, byte[] data, int offset,
+            int len) throws JacksonException {
+        if (data == null) {
+            return writeNull();
+        }
+        _verifyValueWrite("write Binary value");
+        ByteBuffer bytesRef = null;
+        if (_stringRefs != null) {
+            bytesRef = ByteBuffer.wrap(data, offset, len);
+            Integer index = _stringRefs.get(bytesRef);
+            if (index != null) {
+                writeTag(TAG_ID_STRINGREF);
+                _writeIntMinimal(PREFIX_TYPE_INT_POS, index);
+                return this;
+            }
+        }
+
+        _writeLengthMarker(PREFIX_TYPE_BYTES, len);
+        _writeBytes(data, offset, len);
+
+        if (bytesRef != null && shouldReferenceString(_stringRefs.size(), len)) {
+            _stringRefs.put(ByteBuffer.wrap(Arrays.copyOfRange(data, offset, len)),
+                    _stringRefs.size());
+        }
+        return this;
+    }
+
+    @Override
+    public int writeBinary(InputStream data, int dataLength) throws JacksonException {
+        if (dataLength < 0) {
+            throw new UnsupportedOperationException(
+                    "Must pass actual length for CBOR encoded data");
+        }
+        _verifyValueWrite("write Binary value");
+        int missing;
+
+        if (_stringRefs == null) {
+            _writeLengthMarker(PREFIX_TYPE_BYTES, dataLength);
+            missing = _writeBytes(data, dataLength);
+        } else {
+            byte[] bytes = new byte[dataLength];
+            try {
+                missing = dataLength - data.read(bytes);
+            } catch (IOException e) {
+                throw _wrapIOFailure(e);
+            }
+            if (missing == 0) {
+                ByteBuffer bytesRef = ByteBuffer.wrap(bytes);
+                Integer index = _stringRefs.get(bytesRef);
+                if (index != null) {
+                    writeTag(TAG_ID_STRINGREF);
+                    _writeIntMinimal(PREFIX_TYPE_INT_POS, index);
+                } else {
+                    _writeLengthMarker(PREFIX_TYPE_BYTES, dataLength);
+                    _writeBytes(bytes, 0, dataLength);
+                    if (shouldReferenceString(_stringRefs.size(), dataLength)) {
+                        _stringRefs.put(bytesRef, _stringRefs.size());
+                    }
+                }
+            }
+        }
+
+        if (missing > 0) {
+            _reportError("Too few bytes available: missing " + missing
+                    + " bytes (out of " + dataLength + ")");
+        }
+        return dataLength;
+    }
+
+    @Override
+    public int writeBinary(Base64Variant b64variant, InputStream data,
+            int dataLength) throws JacksonException {
+        return writeBinary(data, dataLength);
+    }
+
+    /*
+    /**********************************************************************
+    /* Output method implementations, primitive
+    /**********************************************************************
+     */
+
+    @Override
+    public JsonGenerator writeBoolean(boolean state) throws JacksonException {
+        _verifyValueWrite("write boolean value");
+        _writeByte(state ? BYTE_TRUE : BYTE_FALSE);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeNull() throws JacksonException {
+        _verifyValueWrite("write null value");
+        _writeByte(BYTE_NULL);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeNumber(short v) throws JacksonException {
+        return writeNumber((int) v);
+    }
+
+    @Override
+    public JsonGenerator writeNumber(int i) throws JacksonException {
+        _verifyValueWrite("write number");
+        int marker;
+        if (i < 0) {
+            i = -i - 1;
+            marker = PREFIX_TYPE_INT_NEG;
+        } else {
+            marker = PREFIX_TYPE_INT_POS;
+        }
+        _ensureRoomForOutput(5);
+        byte b0;
+        if (_cfgMinimalInts) {
+            if (i < 24) {
+                _outputBuffer[_outputTail++] = (byte) (marker + i);
+                return this;
+            }
+            if (i <= 0xFF) {
+                _outputBuffer[_outputTail++] = (byte) (marker + SUFFIX_UINT8_ELEMENTS);
+                _outputBuffer[_outputTail++] = (byte) i;
+                return this;
+            }
+            b0 = (byte) i;
+            i >>= 8;
+            if (i <= 0xFF) {
+                _outputBuffer[_outputTail++] = (byte) (marker + SUFFIX_UINT16_ELEMENTS);
+                _outputBuffer[_outputTail++] = (byte) i;
+                _outputBuffer[_outputTail++] = b0;
+                return this;
+            }
+        } else {
+            b0 = (byte) i;
+            i >>= 8;
+        }
+        _outputBuffer[_outputTail++] = (byte) (marker + SUFFIX_UINT32_ELEMENTS);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        _outputBuffer[_outputTail++] = b0;
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeNumber(long l) throws JacksonException {
+        _verifyValueWrite("write number");
+        if (_cfgMinimalInts) {
+            if (l >= 0) {
+                if (l < 0x100000000L) {
+                    _writeIntMinimal(PREFIX_TYPE_INT_POS, (int) l);
+                    return this;
+                }
+            } else if (l >= -0x100000000L) {
+                _writeIntMinimal(PREFIX_TYPE_INT_NEG, (int) (-l - 1));
+                return this;
+            }
+        }
+        _ensureRoomForOutput(9);
+        if (l < 0L) {
+            l += 1;
+            l = -l;
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_NEG + SUFFIX_UINT64_ELEMENTS);
+        } else {
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_POS + SUFFIX_UINT64_ELEMENTS);
+        }
+        if (CBORVarHandleUtil.LONG_BE != null) {
+            CBORVarHandleUtil.LONG_BE.set(_outputBuffer, _outputTail, l);
+            _outputTail += 8;
+        } else {
+            int i = (int) (l >> 32);
+            _outputBuffer[_outputTail++] = (byte) (i >> 24);
+            _outputBuffer[_outputTail++] = (byte) (i >> 16);
+            _outputBuffer[_outputTail++] = (byte) (i >> 8);
+            _outputBuffer[_outputTail++] = (byte) i;
+            i = (int) l;
+            _outputBuffer[_outputTail++] = (byte) (i >> 24);
+            _outputBuffer[_outputTail++] = (byte) (i >> 16);
+            _outputBuffer[_outputTail++] = (byte) (i >> 8);
+            _outputBuffer[_outputTail++] = (byte) i;
+        }
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeNumber(BigInteger v) throws JacksonException {
+        if (v == null) {
+            return writeNull();
+        }
+        _verifyValueWrite("write number");
+        _write(v);
+        return this;
+    }
+
+    protected void _write(BigInteger v) throws JacksonException {
+        if (v.signum() < 0) {
+            _writeByte(BYTE_TAG_BIGNUM_NEG);
+            if (isEnabled(CBORWriteFeature.ENCODE_USING_STANDARD_NEGATIVE_BIGINT_ENCODING)) {
+                v = BI_MINUS_ONE.subtract(v);
+            } else {
+                v = v.negate();
+            }
+        } else {
+            _writeByte(BYTE_TAG_BIGNUM_POS);
+        }
+        byte[] data = v.toByteArray();
+        final int len = data.length;
+        if (_stringRefs == null) {
+            _writeLengthMarker(PREFIX_TYPE_BYTES, len);
+            _writeBytes(data, 0, len);
+        } else {
+            ByteBuffer bytesRef = ByteBuffer.wrap(data);
+            Integer index = _stringRefs.get(bytesRef);
+            if (index != null) {
+                writeTag(TAG_ID_STRINGREF);
+                _writeIntMinimal(PREFIX_TYPE_INT_POS, index);
+            } else {
+                _writeLengthMarker(PREFIX_TYPE_BYTES, len);
+                _writeBytes(data, 0, len);
+                if (shouldReferenceString(_stringRefs.size(), len)) {
+                    _stringRefs.put(bytesRef, _stringRefs.size());
+                }
+            }
+        }
+    }
+
+    @Override
+    public JsonGenerator writeNumber(double d) throws JacksonException {
+        _verifyValueWrite("write number");
+        if (_cfgMinimalDoubles) {
+            _writeDoubleMinimal(d);
+        } else {
+            _writeDoubleNoCheck(d);
+        }
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeNumber(float f) throws JacksonException {
+        _verifyValueWrite("write number");
+        _writeFloatNoCheck(f);
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeNumber(BigDecimal dec) throws JacksonException {
+        if (dec == null) {
+            return writeNull();
+        }
+        _verifyValueWrite("write number");
+        _writeByte(BYTE_TAG_DECIMAL_FRACTION);
+        _writeByte(BYTE_ARRAY_2_ELEMENTS);
+
+        int scale = dec.scale();
+        _writeIntValue(-scale);
+        BigInteger unscaled = dec.unscaledValue();
+        int bitLength = unscaled.bitLength();
+        if (bitLength <= 31) {
+            _writeIntValue(unscaled.intValue());
+        } else if (bitLength <= 63) {
+            _writeLongValue(unscaled.longValue());
+        } else {
+            _write(unscaled);
+        }
+        return this;
+    }
+
+    @Override
+    public JsonGenerator writeNumber(String encodedValue) throws JacksonException
+    {
+        return writeString(encodedValue);
+    }
+
+    /*
+    /**********************************************************************
+    /* Implementations for other methods
+    /**********************************************************************
+     */
+
+    @Override
+    protected final void _verifyValueWrite(String typeMsg) throws JacksonException {
+        if (!_streamWriteContext.writeValue()) {
+            _reportError("Cannot " + typeMsg + ", expecting a property name/id");
+        }
+        int count = _currentRemainingElements;
+        if (count != INDEFINITE_LENGTH) {
+            --count;
+
+            if (count < 0) {
+                _failSizedArrayOrObject();
+                return;
+            }
+            _currentRemainingElements = count;
+        }
+    }
+
+    private void _failSizedArrayOrObject() throws JacksonException
+    {
+        _reportError(String.format("%s size mismatch: number of element encoded is not equal to reported array/map size.",
+                _streamWriteContext.typeDesc()));
+    }
+
+    /*
+    /**********************************************************************
+    /* Low-level output handling
+    /**********************************************************************
+     */
+
+    @Override
+    public final void flush() throws JacksonException {
+        _flushBuffer();
+        if (isEnabled(StreamWriteFeature.FLUSH_PASSED_TO_STREAM)) {
+            try {
+                _out.flush();
+            } catch (IOException e) {
+                throw _wrapIOFailure(e);
+            }
+        }
+    }
+
+    @Override
+    protected void _closeInput() throws IOException
+    {
+        if ((_outputBuffer != null)
+                && isEnabled(StreamWriteFeature.AUTO_CLOSE_CONTENT)) {
+            while (true) {
+                TokenStreamContext ctxt = streamWriteContext();
+                if (ctxt.inArray()) {
+                    writeEndArray();
+                } else if (ctxt.inObject()) {
+                    writeEndObject();
+                } else {
+                    break;
+                }
+            }
+        }
+        _flushBuffer();
+
+        if (_ioContext.isResourceManaged()
+                || isEnabled(StreamWriteFeature.AUTO_CLOSE_TARGET)) {
+            _out.close();
+        } else if (isEnabled(StreamWriteFeature.FLUSH_PASSED_TO_STREAM)) {
+            _out.flush();
+        }
+    }
+
+    /*
+    /**********************************************************************
+    /* Extended API, CBOR-specific encoded output
+    /**********************************************************************
+     */
+
+    public JsonGenerator writeTag(int tagId) throws JacksonException {
+        if (tagId < 0) {
+            throw new IllegalArgumentException(
+                    "Can not write negative tag ids (" + tagId + ")");
+        }
+        _writeLengthMarker(PREFIX_TYPE_TAG, tagId);
+        return this;
+    }
+
+    /*
+    /**********************************************************************
+    /* Extended API, raw bytes (by-passing encoder)
+    /**********************************************************************
+     */
+
+    public JsonGenerator writeRaw(byte b) throws JacksonException {
+        _writeByte(b);
+        return this;
+    }
+
+    public JsonGenerator writeBytes(byte[] data, int offset, int len) throws JacksonException {
+        _writeBytes(data, offset, len);
+        return this;
+    }
+
+    /*
+    /**********************************************************************
+    /* Internal methods, low-level text output
+    /**********************************************************************
+     */
+
+    private final static int MAX_SHORT_STRING_CHARS = 23;
+    private final static int MAX_SHORT_STRING_BYTES = 23 * 3 + 2;
+
+    private final static int MAX_MEDIUM_STRING_CHARS = 255;
+    private final static int MAX_MEDIUM_STRING_BYTES = 255 * 3 + 3;
+
+    protected final void _writeString(String name) throws JacksonException {
+        int len = name.length();
+        if (len == 0) {
+            _writeByte(BYTE_EMPTY_STRING);
+            return;
+        }
+
+        if (_stringRefs != null && len <= MAX_LONG_STRING_CHARS) {
+            Integer index = _stringRefs.get(name);
+            if (index != null) {
+                writeTag(TAG_ID_STRINGREF);
+                _writeIntMinimal(PREFIX_TYPE_INT_POS, index);
+                return;
+            }
+        }
+
+        if (len <= MAX_SHORT_STRING_CHARS) {
+            _ensureSpace(MAX_SHORT_STRING_BYTES);
+            int actual = _encode(_outputTail + 1, name, len);
+            if (_stringRefs != null && shouldReferenceString(_stringRefs.size(), actual)) {
+                _stringRefs.put(name, _stringRefs.size());
+            }
+            final byte[] buf = _outputBuffer;
+            int ix = _outputTail;
+            if (actual <= MAX_SHORT_STRING_CHARS) {
+                buf[ix++] = (byte) (PREFIX_TYPE_TEXT + actual);
+                _outputTail = ix + actual;
+                return;
+            }
+            System.arraycopy(buf, ix + 1, buf, ix + 2, actual);
+            buf[ix++] = BYTE_STRING_1BYTE_LEN;
+            buf[ix++] = (byte) actual;
+            _outputTail = ix + actual;
+            return;
+        }
+
+        char[] cbuf = _charBuffer;
+        if (len > cbuf.length) {
+            _charBuffer = cbuf = new char[Math
+                    .max(_charBuffer.length + 32, len)];
+        }
+        name.getChars(0, len, cbuf, 0);
+        int actual = _writeString(cbuf, 0, len);
+        if (actual >= 0 && _stringRefs != null &&
+                shouldReferenceString(_stringRefs.size(), actual)) {
+            _stringRefs.put(name, _stringRefs.size());
+        }
+    }
+
+    protected final void _ensureSpace(int needed) throws JacksonException {
+        if ((_outputTail + needed + 3) > _outputEnd) {
+            _flushBuffer();
+        }
+    }
+
+    protected final int _writeString(char[] text, int offset, int len)
+            throws JacksonException
+    {
+        if (len <= MAX_SHORT_STRING_CHARS) {
+            _ensureSpace(MAX_SHORT_STRING_BYTES);
+            int actual = _encode(_outputTail + 1, text, offset, offset + len);
+            final byte[] buf = _outputBuffer;
+            int ix = _outputTail;
+            if (actual <= MAX_SHORT_STRING_CHARS) {
+                buf[ix++] = (byte) (PREFIX_TYPE_TEXT + actual);
+                _outputTail = ix + actual;
+                return actual;
+            }
+            System.arraycopy(buf, ix + 1, buf, ix + 2, actual);
+            buf[ix++] = BYTE_STRING_1BYTE_LEN;
+            buf[ix++] = (byte) actual;
+            _outputTail = ix + actual;
+            return actual;
+        }
+        if (len <= MAX_MEDIUM_STRING_CHARS) {
+            _ensureSpace(MAX_MEDIUM_STRING_BYTES);
+            int actual = _encode(_outputTail + 2, text, offset, offset + len);
+            final byte[] buf = _outputBuffer;
+            int ix = _outputTail;
+            if (actual <= MAX_MEDIUM_STRING_CHARS) {
+                buf[ix++] = BYTE_STRING_1BYTE_LEN;
+                buf[ix++] = (byte) actual;
+                _outputTail = ix + actual;
+                return actual;
+            }
+            System.arraycopy(buf, ix + 2, buf, ix + 3, actual);
+            buf[ix++] = BYTE_STRING_2BYTE_LEN;
+            buf[ix++] = (byte) (actual >> 8);
+            buf[ix++] = (byte) actual;
+            _outputTail = ix + actual;
+            return actual;
+        }
+        if (len <= MAX_LONG_STRING_CHARS) {
+            _ensureSpace(MAX_LONG_STRING_BYTES);
+            int ix = _outputTail;
+            int actual = _encode(ix + 3, text, offset, offset + len);
+            final byte[] buf = _outputBuffer;
+            buf[ix++] = BYTE_STRING_2BYTE_LEN;
+            buf[ix++] = (byte) (actual >> 8);
+            buf[ix++] = (byte) actual;
+            _outputTail = ix + actual;
+            return actual;
+        }
+        _writeChunkedString(text, offset, len);
+        return -1;
+    }
+
+    protected final void _writeChunkedString(char[] text, int offset, int len)
+        throws JacksonException
+    {
+        _writeByte(BYTE_STRING_INDEFINITE);
+
+        while (len > MAX_LONG_STRING_CHARS) {
+            _ensureSpace(MAX_LONG_STRING_BYTES);
+            int ix = _outputTail;
+            int amount = MAX_LONG_STRING_CHARS;
+
+            int end = offset + amount;
+            char c = text[end-1];
+            if (c >= SURR1_FIRST && c <= SURR1_LAST) {
+                --end;
+                --amount;
+            }
+            int actual = _encode(_outputTail + 3, text, offset, end);
+            final byte[] buf = _outputBuffer;
+            buf[ix++] = BYTE_STRING_2BYTE_LEN;
+            buf[ix++] = (byte) (actual >> 8);
+            buf[ix++] = (byte) actual;
+            _outputTail = ix + actual;
+            offset += amount;
+            len -= amount;
+        }
+        if (len > 0) {
+            _writeString(text, offset, len);
+        }
+        _writeByte(BYTE_BREAK);
+    }
+
+    /*
+    /**********************************************************************
+    /* Internal methods, UTF-8 encoding
+    /**********************************************************************
+     */
+
+    private final int _encode(int outputPtr, char[] str, int i, int end)
+        throws JacksonException
+    {
+        final byte[] outBuf = _outputBuffer;
+        final int outputStart = outputPtr;
+        do {
+            int c = str[i];
+            if (c > 0x7F) {
+                return _shortUTF8Encode2(str, i, end, outputPtr, outputStart);
+            }
+            outBuf[outputPtr++] = (byte) c;
+        } while (++i < end);
+        return outputPtr - outputStart;
+    }
+
+    private final int _shortUTF8Encode2(char[] str, int i, int end,
+            int outputPtr, int outputStart)
+        throws JacksonException
+    {
+        final byte[] outBuf = _outputBuffer;
+        while (i < end) {
+            int c = str[i++];
+            if (c <= 0x7F) {
+                outBuf[outputPtr++] = (byte) c;
+                continue;
+            }
+            if (c < 0x800) {
+                outBuf[outputPtr++] = (byte) (0xc0 | (c >> 6));
+                outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
+                continue;
+            }
+            if (c < SURR1_FIRST || c > SURR2_LAST) {
+                outBuf[outputPtr++] = (byte) (0xe0 | (c >> 12));
+                outBuf[outputPtr++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+                outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
+                continue;
+            }
+            if ((c <= SURR1_LAST) && (i < end)) {
+                final int d = str[i];
+                if ((d <= SURR2_LAST) && (d >= SURR2_FIRST)) {
+                    ++i;
+                    outputPtr = _decodeAndWriteSurrogate(c, d, outBuf, outputPtr);
+                    continue;
+                }
+                outputPtr = _invalidSurrogateEnd(c, d, outBuf, outputPtr);
+                continue;
+            }
+            outputPtr = _invalidSurrogateStart(c, outBuf, outputPtr);
+        }
+        return (outputPtr - outputStart);
+    }
+
+    private final int _encode(int outputPtr, String str, int len)
+        throws JacksonException
+    {
+        final byte[] outBuf = _outputBuffer;
+        final int outputStart = outputPtr;
+
+        for (int i = 0; i < len; ++i) {
+            int c = str.charAt(i);
+            if (c > 0x7F) {
+                return _encode2(i, outputPtr, str, len, outputStart);
+            }
+            outBuf[outputPtr++] = (byte) c;
+        }
+        return (outputPtr - outputStart);
+    }
+
+    private final int _encode2(int i, int outputPtr, String str, int len,
+            int outputStart)
+        throws JacksonException
+    {
+        final byte[] outBuf = _outputBuffer;
+        while (i < len) {
+            int c = str.charAt(i++);
+            if (c <= 0x7F) {
+                outBuf[outputPtr++] = (byte) c;
+                continue;
+            }
+            if (c < 0x800) {
+                outBuf[outputPtr++] = (byte) (0xc0 | (c >> 6));
+                outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
+                continue;
+            }
+            if (c < SURR1_FIRST || c > SURR2_LAST) {
+                outBuf[outputPtr++] = (byte) (0xe0 | (c >> 12));
+                outBuf[outputPtr++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+                outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
+                continue;
+            }
+            if ((c <= SURR1_LAST) && (i < len)) {
+                final int d = str.charAt(i);
+                if ((d <= SURR2_LAST) && (d >= SURR2_FIRST)) {
+                    ++i;
+                    outputPtr = _decodeAndWriteSurrogate(c, d, outBuf, outputPtr);
+                    continue;
+                }
+                outputPtr = _invalidSurrogateEnd(c, d, outBuf, outputPtr);
+                continue;
+            }
+            outputPtr = _invalidSurrogateStart(c, outBuf, outputPtr);
+        }
+        return (outputPtr - outputStart);
+    }
+
+    private int _invalidSurrogateStart(int code, byte[] outBuf, int outputPtr)
+        throws JacksonException
+    {
+        if (isEnabled(CBORWriteFeature.LENIENT_UTF_ENCODING)) {
+            return _appendReplacementChar(outBuf, outputPtr);
+        }
+        if (code <= SURR1_LAST) {
+            _reportError(String.format(
+"Unmatched surrogate pair, starts with valid high surrogate (0x%04X) but ends without low surrogate",
+code));
+        }
+        _reportError(String.format(
+"Invalid surrogate pair, starts with invalid high surrogate (0x%04X), not in valid range [0xD800, 0xDBFF]",
+code));
+        return 0;
+    }
+
+    private int _invalidSurrogateEnd(int surr1, int surr2,
+            byte[] outBuf, int outputPtr)
+        throws JacksonException
+    {
+        if (isEnabled(CBORWriteFeature.LENIENT_UTF_ENCODING)) {
+            return _appendReplacementChar(outBuf, outputPtr);
+        }
+        _reportError(String.format(
+"Invalid surrogate pair, starts with valid high surrogate (0x%04X)"
++" but ends with invalid low surrogate (0x%04X), not in valid range [0xDC00, 0xDFFF]",
+surr1, surr2));
+        return 0;
+    }
+
+    private int _appendReplacementChar(byte[] outBuf, int outputPtr) {
+        outBuf[outputPtr++] = (byte) (0xe0 | (REPLACEMENT_CHAR >> 12));
+        outBuf[outputPtr++] = (byte) (0x80 | ((REPLACEMENT_CHAR >> 6) & 0x3f));
+        outBuf[outputPtr++] = (byte) (0x80 | (REPLACEMENT_CHAR & 0x3f));
+        return outputPtr;
+    }
+
+    private int _decodeAndWriteSurrogate(int surr1, int surr2,
+            byte[] outBuf, int outputPtr)
+    {
+        final int c = 0x10000 + ((surr1 - SURR1_FIRST) << 10)
+                + (surr2 - SURR2_FIRST);
+        outBuf[outputPtr++] = (byte) (0xf0 | (c >> 18));
+        outBuf[outputPtr++] = (byte) (0x80 | ((c >> 12) & 0x3f));
+        outBuf[outputPtr++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+        outBuf[outputPtr++] = (byte) (0x80 | (c & 0x3f));
+        return outputPtr;
+    }
+
+    /*
+    /**********************************************************************
+    /* Internal methods, writing bytes
+    /**********************************************************************
+     */
+
+    private final void _ensureRoomForOutput(int needed) throws JacksonException {
+        if ((_outputTail + needed) >= _outputEnd) {
+            _flushBuffer();
+        }
+    }
+
+    private final void _writeIntValue(int i) throws JacksonException {
+        int marker;
+        if (i < 0) {
+            i = -i - 1;
+            marker = PREFIX_TYPE_INT_NEG;
+        } else {
+            marker = PREFIX_TYPE_INT_POS;
+        }
+        _writeLengthMarker(marker, i);
+    }
+
+    private final void _writeLongValue(long l) throws JacksonException {
+        _ensureRoomForOutput(9);
+        if (l < 0) {
+            l += 1;
+            l = -l;
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_NEG + SUFFIX_UINT64_ELEMENTS);
+        } else {
+            _outputBuffer[_outputTail++] = (PREFIX_TYPE_INT_POS + SUFFIX_UINT64_ELEMENTS);
+        }
+        int i = (int) (l >> 32);
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        i = (int) l;
+        _outputBuffer[_outputTail++] = (byte) (i >> 24);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+    }
+
+    private final void _writeLengthMarker(int majorType, int i)
+            throws JacksonException {
+        _ensureRoomForOutput(5);
+        if (i < 24) {
+            _outputBuffer[_outputTail++] = (byte) (majorType + i);
+            return;
+        }
+        if (i <= 0xFF) {
+            _outputBuffer[_outputTail++] = (byte) (majorType + SUFFIX_UINT8_ELEMENTS);
+            _outputBuffer[_outputTail++] = (byte) i;
+            return;
+        }
+        final byte b0 = (byte) i;
+        i >>= 8;
+        if (i <= 0xFF) {
+            _outputBuffer[_outputTail++] = (byte) (majorType + SUFFIX_UINT16_ELEMENTS);
+            _outputBuffer[_outputTail++] = (byte) i;
+            _outputBuffer[_outputTail++] = b0;
+            return;
+        }
+        _outputBuffer[_outputTail++] = (byte) (majorType + SUFFIX_UINT32_ELEMENTS);
+        _outputBuffer[_outputTail++] = (byte) (i >> 16);
+        _outputBuffer[_outputTail++] = (byte) (i >> 8);
+        _outputBuffer[_outputTail++] = (byte) i;
+        _outputBuffer[_outputTail++] = b0;
+    }
+
+    private final void _writeByte(byte b) throws JacksonException {
+        if (_outputTail >= _outputEnd) {
+            _flushBuffer();
+        }
+        _outputBuffer[_outputTail++] = b;
+    }
+
+    private final void _writeBytes(byte[] data, int offset, int len)
+            throws JacksonException {
+        if (len == 0) {
+            return;
+        }
+        if ((_outputTail + len) >= _outputEnd) {
+            _writeBytesLong(data, offset, len);
+            return;
+        }
+        System.arraycopy(data, offset, _outputBuffer, _outputTail, len);
+        _outputTail += len;
+    }
+
+    private final int _writeBytes(InputStream in, int bytesLeft)
+            throws JacksonException {
+        while (bytesLeft > 0) {
+            int room = _outputEnd - _outputTail;
+            if (room <= 0) {
+                _flushBuffer();
+                room = _outputEnd - _outputTail;
+            }
+            int count;
+            try {
+                count = in.read(_outputBuffer, _outputTail, room);
+            } catch (IOException e) {
+                throw _wrapIOFailure(e);
+            }
+            if (count < 0) {
+                break;
+            }
+            _outputTail += count;
+            bytesLeft -= count;
+        }
+        return bytesLeft;
+    }
+
+    private final void _writeBytesLong(byte[] data, int offset, int len)
+            throws JacksonException {
+        if (_outputTail >= _outputEnd) {
+            _flushBuffer();
+        }
+        while (true) {
+            int currLen = Math.min(len, (_outputEnd - _outputTail));
+            System.arraycopy(data, offset, _outputBuffer, _outputTail, currLen);
+            _outputTail += currLen;
+            if ((len -= currLen) == 0) {
+                break;
+            }
+            offset += currLen;
+            _flushBuffer();
+        }
+    }
+
+    /*
+    /**********************************************************************
+    /* Internal methods, buffer handling
+    /**********************************************************************
+     */
+
+    @Override
+    protected void _releaseBuffers() {
+        byte[] buf = _outputBuffer;
+        if (buf != null && _bufferRecyclable) {
+            _outputBuffer = null;
+            _ioContext.releaseWriteEncodingBuffer(buf);
+        }
+        char[] cbuf = _charBuffer;
+        if (cbuf != null) {
+            _charBuffer = null;
+            _ioContext.releaseConcatBuffer(cbuf);
+        }
+    }
+
+    protected final void _flushBuffer() throws JacksonException {
+        if (_outputTail > 0) {
+            _bytesWritten += _outputTail;
+            try {
+                _out.write(_outputBuffer, 0, _outputTail);
+            } catch (IOException e) {
+                throw _wrapIOFailure(e);
+            }
+            _outputTail = 0;
+        }
+    }
+
+    /*
+    /**********************************************************************
+    /* Internal methods, size control for array and objects
+    /**********************************************************************
+     */
+
+    private final void closeComplexElement() throws JacksonException {
+        switch (_currentRemainingElements) {
+        case INDEFINITE_LENGTH:
+            _writeByte(BYTE_BREAK);
+            break;
+        case 0:
+            break;
+        default:
+            _reportError(String.format("%s size mismatch: expected %d more elements",
+                    _streamWriteContext.typeDesc(), _currentRemainingElements));
+        }
+        _currentRemainingElements = (_elementCountsPtr == 0)
+                ? INDEFINITE_LENGTH
+                        : _elementCounts[--_elementCountsPtr];
+    }
+
+    /*
+    /**********************************************************************
+    /* Internal methods, error reporting
+    /**********************************************************************
+     */
+
+    protected UnsupportedOperationException _notSupported() {
+        return new UnsupportedOperationException();
+    }
+}
