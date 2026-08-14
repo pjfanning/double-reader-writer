@@ -112,10 +112,10 @@ final public class DoubleToDecimal {
         -d.ddddddddddddddddE-eee    H + 7 characters
     where there are H digits d
      */
-    public final int MAX_CHARS = H + 7;
+    public static final int MAX_DOUBLE_CHARS = H + 7;
 
     // Numerical results are created here...
-    private final byte[] bytes = new byte[MAX_CHARS];
+    private final byte[] bytes = new byte[MAX_DOUBLE_CHARS];
 
     // Index into bytes of rightmost valid character.
     private int index;
@@ -606,6 +606,67 @@ final public class DoubleToDecimal {
      */
     public static int writeDouble(double v, byte[] buf, int off) {
         return new DoubleToDecimal().toBuffer(v, buf, off);
+    }
+
+    /**
+     * Writes the decimal representation of the given {@code double} directly into
+     * the provided char buffer, avoiding any String allocation.
+     *
+     * @param v the {@code double} to be rendered
+     * @param buf the target char buffer
+     * @param off the offset within {@code buf} to start writing
+     * @return the offset within {@code buf} after the last char written
+     * @since 3.3
+     */
+    public static int writeDouble(double v, char[] buf, int off) {
+        return new DoubleToDecimal().toCharBuffer(v, buf, off);
+    }
+
+    private int toCharBuffer(double v, char[] buf, int off) {
+        switch (toDecimal(v)) {
+        case NON_SPECIAL:
+            for (int i = 0, len = index + 1; i < len; ++i) {
+                buf[off + i] = (char) bytes[i];
+            }
+            return off + index + 1;
+        case PLUS_ZERO:
+            buf[off] = '0';
+            buf[off + 1] = '.';
+            buf[off + 2] = '0';
+            return off + 3;
+        case MINUS_ZERO:
+            buf[off] = '-';
+            buf[off + 1] = '0';
+            buf[off + 2] = '.';
+            buf[off + 3] = '0';
+            return off + 4;
+        case PLUS_INF:
+            buf[off] = 'I';
+            buf[off + 1] = 'n';
+            buf[off + 2] = 'f';
+            buf[off + 3] = 'i';
+            buf[off + 4] = 'n';
+            buf[off + 5] = 'i';
+            buf[off + 6] = 't';
+            buf[off + 7] = 'y';
+            return off + 8;
+        case MINUS_INF:
+            buf[off] = '-';
+            buf[off + 1] = 'I';
+            buf[off + 2] = 'n';
+            buf[off + 3] = 'f';
+            buf[off + 4] = 'i';
+            buf[off + 5] = 'n';
+            buf[off + 6] = 'i';
+            buf[off + 7] = 't';
+            buf[off + 8] = 'y';
+            return off + 9;
+        default: // NAN
+            buf[off] = 'N';
+            buf[off + 1] = 'a';
+            buf[off + 2] = 'N';
+            return off + 3;
+        }
     }
 
     private int toBuffer(double v, byte[] buf, int off) {

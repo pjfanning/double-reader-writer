@@ -9,21 +9,20 @@ import tools.jackson.core.StreamWriteFeature;
 import tools.jackson.core.io.CharacterEscapes;
 import tools.jackson.core.io.IOContext;
 import tools.jackson.core.io.NumberOutput;
-import tools.jackson.core.io.schubfach.local.DoubleToDecimal;
+import tools.jackson.core.io.numberwriter.XJBWriter;
 
 import java.io.Writer;
 
 /**
  * Subclass of {@link WriterBasedJsonGenerator} that overrides {@code writeNumber(double)} to
- * write Schubfach chars directly into the output buffer, bypassing {@code writeRaw(String)}.
- * Mirrors the spirit of jackson-core PR #1657 for the writer-based generator.
+ * write XJB chars directly into the output buffer, bypassing {@code writeRaw(String)}.
  */
-public class PR1657WriterJsonGenerator extends WriterBasedJsonGenerator {
+public class XJBWriterJsonGenerator extends WriterBasedJsonGenerator {
 
-    public PR1657WriterJsonGenerator(ObjectWriteContext ctxt, IOContext ioCtxt,
-            int stdFeatures, int formatFeatures, Writer out,
-            SerializableString rootValueSeparator, PrettyPrinter prettyPrinter,
-            CharacterEscapes charEscapes, int maximumNonEscapedChar, char quoteChar) {
+    public XJBWriterJsonGenerator(ObjectWriteContext ctxt, IOContext ioCtxt,
+                                  int stdFeatures, int formatFeatures, Writer out,
+                                  SerializableString rootValueSeparator, PrettyPrinter prettyPrinter,
+                                  CharacterEscapes charEscapes, int maximumNonEscapedChar, char quoteChar) {
         super(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
                 rootValueSeparator, prettyPrinter, charEscapes,
                 maximumNonEscapedChar, quoteChar);
@@ -40,11 +39,11 @@ public class PR1657WriterJsonGenerator extends WriterBasedJsonGenerator {
         }
         _verifyValueWrite("write a number");
         if (useFast) {
-            // Write Schubfach chars directly into output buffer, avoiding String allocation
-            if ((_outputTail + DoubleToDecimal.MAX_DOUBLE_CHARS) > _outputEnd) {
+            // Write XJB chars directly into output buffer, avoiding String allocation
+            if ((_outputTail + XJBWriter.MAX_DOUBLE_CHARS) > _outputEnd) {
                 _flushBuffer();
             }
-            _outputTail = DoubleToDecimal.writeDouble(d, _outputBuffer, _outputTail);
+            _outputTail = XJBWriter.writeDouble(d, _outputBuffer, _outputTail);
             return this;
         }
         return writeRaw(NumberOutput.toString(d, false));
