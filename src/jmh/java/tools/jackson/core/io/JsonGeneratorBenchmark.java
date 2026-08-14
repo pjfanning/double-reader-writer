@@ -114,7 +114,7 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
         }
         gen.writeEndArray();
         gen.close();
-        bh.consume(sw.toString());
+        bh.consume(sw.getBuffer().length());
     }
 
     @Benchmark
@@ -129,7 +129,7 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
         }
         gen.writeEndArray();
         gen.close();
-        bh.consume(sw.toString());
+        bh.consume(sw.getBuffer().length());
     }
 
     @Benchmark
@@ -144,6 +144,6 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
         }
         gen.writeEndArray();
         gen.close();
-        bh.consume(sw.toString());
+        bh.consume(sw.getBuffer().length());
     }
 }
