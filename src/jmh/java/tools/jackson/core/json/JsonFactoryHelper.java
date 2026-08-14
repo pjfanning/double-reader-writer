@@ -51,4 +51,12 @@ public class JsonFactoryHelper extends JsonFactory {
                 _rootValueSeparator, null, _characterEscapes,
                 _maximumNonEscapedChar, _quoteChar);
     }
+
+    public XJBWriterJsonGenerator createXJBWriterGenerator(ObjectWriteContext ctxt, IOContext ioCtxt,
+            int stdFeatures, int formatFeatures, Writer out) {
+        return new XJBWriterJsonGenerator(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
+                _rootValueSeparator, null, _characterEscapes,
+                _maximumNonEscapedChar, _quoteChar);
+    }
+
 }

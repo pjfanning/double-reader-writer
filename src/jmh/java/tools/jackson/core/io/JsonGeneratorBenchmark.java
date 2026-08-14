@@ -11,6 +11,7 @@ import tools.jackson.core.json.XJBJsonGenerator;
 import tools.jackson.core.json.JsonFactoryHelper;
 import tools.jackson.core.json.UTF8JsonGenerator;
 import tools.jackson.core.json.WriterBasedJsonGenerator;
+import tools.jackson.core.json.XJBWriterJsonGenerator;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -137,6 +138,21 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
         StringWriter sw = new StringWriter(4096);
         IOContext ioCtxt = createIOContext(sw);
         PR1657WriterJsonGenerator gen = JSON_FACTORY.createPR1657WriterGenerator(
+                ObjectWriteContext.empty(), ioCtxt, FAST_STD_FEATURES, 0, sw);
+        gen.writeStartArray();
+        for (double d : DOUBLES) {
+            gen.writeNumber(d);
+        }
+        gen.writeEndArray();
+        gen.close();
+        bh.consume(sw.getBuffer().length());
+    }
+
+    @Benchmark
+    public void xjbWriterWriteDoubleArray(Blackhole bh) throws IOException {
+        StringWriter sw = new StringWriter(4096);
+        IOContext ioCtxt = createIOContext(sw);
+        XJBWriterJsonGenerator gen = JSON_FACTORY.createXJBWriterGenerator(
                 ObjectWriteContext.empty(), ioCtxt, FAST_STD_FEATURES, 0, sw);
         gen.writeStartArray();
         for (double d : DOUBLES) {

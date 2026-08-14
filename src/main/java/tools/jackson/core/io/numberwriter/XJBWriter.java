@@ -22,7 +22,7 @@ import java.nio.charset.StandardCharsets;
  * @since 3.3
  */
 public final class XJBWriter {
-    
+
     public static final int MAX_DOUBLE_CHARS = 48;
     public static final int MAX_FLOAT_CHARS = 32;
 
