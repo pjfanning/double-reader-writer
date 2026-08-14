@@ -76,18 +76,4 @@ public class CBORGeneratorBenchmark extends BenchmarkLauncher {
         gen.close();
         bh.consume(baos.size());
     }
-
-    @Benchmark
-    public void pr752CborMinimalDoubleArray(Blackhole bh) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(4096);
-        PR752CBORGenerator gen = (PR752CBORGenerator) PR752_CBOR_FACTORY.createGenerator(
-                BASELINE_CTXT, baos);
-        gen.writeStartArray();
-        for (double d : DOUBLES) {
-            gen.writeNumber(d);
-        }
-        gen.writeEndArray();
-        gen.close();
-        bh.consume(baos.size());
-    }
 }
