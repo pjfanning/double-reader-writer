@@ -1,4 +1,4 @@
-package tools.jackson.core.io.json;
+package tools.jackson.core.json;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.JsonGenerator;

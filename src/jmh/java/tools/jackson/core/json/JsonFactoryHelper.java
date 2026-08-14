@@ -2,10 +2,9 @@ package tools.jackson.core.json;
 
 import tools.jackson.core.ObjectWriteContext;
 import tools.jackson.core.io.IOContext;
-import tools.jackson.core.io.json.PR1657JsonGenerator;
-import tools.jackson.core.io.json.XJBJsonGenerator;
 
 import java.io.OutputStream;
+import java.io.Writer;
 
 /**
  * Exposes protected {@link JsonFactory} methods for direct {@link UTF8JsonGenerator} creation,
@@ -36,6 +35,20 @@ public class JsonFactoryHelper extends JsonFactory {
             int stdFeatures, int formatFeatures, OutputStream out) {
         return new XJBJsonGenerator(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
                 _rootValueSeparator, _characterEscapes, null,
+                _maximumNonEscapedChar, _quoteChar);
+    }
+
+    public WriterBasedJsonGenerator createWriterGenerator(ObjectWriteContext ctxt, IOContext ioCtxt,
+            int stdFeatures, int formatFeatures, Writer out) {
+        return new WriterBasedJsonGenerator(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
+                _rootValueSeparator, null, _characterEscapes,
+                _maximumNonEscapedChar, _quoteChar);
+    }
+
+    public PR1657WriterJsonGenerator createPR1657WriterGenerator(ObjectWriteContext ctxt, IOContext ioCtxt,
+            int stdFeatures, int formatFeatures, Writer out) {
+        return new PR1657WriterJsonGenerator(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
+                _rootValueSeparator, null, _characterEscapes,
                 _maximumNonEscapedChar, _quoteChar);
     }
 }

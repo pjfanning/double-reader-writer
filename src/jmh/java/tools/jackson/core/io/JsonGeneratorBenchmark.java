@@ -5,13 +5,17 @@ import org.openjdk.jmh.infra.Blackhole;
 import tools.jackson.core.JsonEncoding;
 import tools.jackson.core.ObjectWriteContext;
 import tools.jackson.core.StreamWriteFeature;
-import tools.jackson.core.io.json.PR1657JsonGenerator;
-import tools.jackson.core.io.json.XJBJsonGenerator;
+import tools.jackson.core.json.PR1657JsonGenerator;
+import tools.jackson.core.json.PR1657WriterJsonGenerator;
+import tools.jackson.core.json.XJBJsonGenerator;
 import tools.jackson.core.json.JsonFactoryHelper;
 import tools.jackson.core.json.UTF8JsonGenerator;
+import tools.jackson.core.json.WriterBasedJsonGenerator;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.util.Random;
 
 public class JsonGeneratorBenchmark extends BenchmarkLauncher {
@@ -29,10 +33,12 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
         }
     }
 
-    private IOContext createIOContext(ByteArrayOutputStream baos) {
+    private IOContext createIOContext(Object ref) {
         return JSON_FACTORY.createContext(
-                ContentReference.rawReference(baos), false, JsonEncoding.UTF8);
+                ContentReference.rawReference(ref), false, JsonEncoding.UTF8);
     }
+
+    // --- Utf8 (byte-stream) benchmarks ---
 
     @Benchmark
     public void baselineWriteDoubleArray(Blackhole bh) throws IOException {
@@ -92,5 +98,52 @@ public class JsonGeneratorBenchmark extends BenchmarkLauncher {
         gen.writeEndArray();
         gen.close();
         bh.consume(baos.size());
+    }
+
+    // --- Writer (char-stream) benchmarks ---
+
+    @Benchmark
+    public void baselineWriterWriteDoubleArray(Blackhole bh) throws IOException {
+        StringWriter sw = new StringWriter(4096);
+        IOContext ioCtxt = createIOContext(sw);
+        WriterBasedJsonGenerator gen = JSON_FACTORY.createWriterGenerator(
+                ObjectWriteContext.empty(), ioCtxt, STD_FEATURES, 0, sw);
+        gen.writeStartArray();
+        for (double d : DOUBLES) {
+            gen.writeNumber(d);
+        }
+        gen.writeEndArray();
+        gen.close();
+        bh.consume(sw.toString());
+    }
+
+    @Benchmark
+    public void schubfachWriterWriteDoubleArray(Blackhole bh) throws IOException {
+        StringWriter sw = new StringWriter(4096);
+        IOContext ioCtxt = createIOContext(sw);
+        WriterBasedJsonGenerator gen = JSON_FACTORY.createWriterGenerator(
+                ObjectWriteContext.empty(), ioCtxt, FAST_STD_FEATURES, 0, sw);
+        gen.writeStartArray();
+        for (double d : DOUBLES) {
+            gen.writeNumber(d);
+        }
+        gen.writeEndArray();
+        gen.close();
+        bh.consume(sw.toString());
+    }
+
+    @Benchmark
+    public void pr1657WriterWriteDoubleArray(Blackhole bh) throws IOException {
+        StringWriter sw = new StringWriter(4096);
+        IOContext ioCtxt = createIOContext(sw);
+        PR1657WriterJsonGenerator gen = JSON_FACTORY.createPR1657WriterGenerator(
+                ObjectWriteContext.empty(), ioCtxt, FAST_STD_FEATURES, 0, sw);
+        gen.writeStartArray();
+        for (double d : DOUBLES) {
+            gen.writeNumber(d);
+        }
+        gen.writeEndArray();
+        gen.close();
+        bh.consume(sw.toString());
     }
 }
