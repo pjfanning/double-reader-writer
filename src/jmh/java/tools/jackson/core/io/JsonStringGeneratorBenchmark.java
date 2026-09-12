@@ -1,6 +1,7 @@
 package tools.jackson.core.io;
 
 import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
@@ -47,11 +48,36 @@ public class JsonStringGeneratorBenchmark extends BenchmarkLauncher {
     @Param({"ascii-short", "ascii-long", "ascii-escapes", "unicode"})
     public String content;
 
+    /**
+     * With jackson-core alone, {@code String.charAt} never sees a UTF-16 {@code String} in
+     * the {@code ascii-*} forks (JMH forks per param set, so the {@code unicode} set does not
+     * pollute them), and C2 prunes the non-LATIN1 branch entirely. That is not the state most
+     * users are in: on 3.x without jackson-databind#6183, merely constructing an
+     * {@code ObjectMapper} pollutes {@code String.charAt} via {@code StdDateFormat.<clinit>},
+     * and the ASCII scan loop then compiles very differently (no unrolling, out-of-line
+     * {@code StringUTF16.charAt} call kept inside the loop, spills).
+     * <p>
+     * {@code true} forces that pollution up front so both states show up in the same run.
+     */
+    @Param({"false", "true"})
+    public boolean pollutedCharAtProfile;
+
     private String[] strings;
     private char[][] chars;
     private int outputSize;
 
-    @Setup
+    @Setup(Level.Trial)
+    public void pollute() {
+        if (pollutedCharAtProfile) {
+            // a single call is enough: String.charAt has one process-wide MethodData,
+            // and C2 prunes the non-LATIN1 branch only at a zero count
+            if ("\u2030".charAt(0) != '\u2030') {
+                throw new AssertionError();
+            }
+        }
+    }
+
+    @Setup(Level.Trial)
     public void setup() {
         Random rnd = new Random(42);
         strings = new String[NUM_STRINGS];

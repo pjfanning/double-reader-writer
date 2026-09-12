@@ -27,10 +27,12 @@ test {
 }
 
 jmh {
-    includes = ['.JsonStringGeneratorBenchmark*']
-    warmupIterations = 3
-    iterations = 3
-    fork = 1
+    includes = ['.JsonStringGeneratorBenchmark.*String.*']
+    warmupIterations = 5
+    warmup = '1s'
+    iterations = 10
+    timeOnIteration = '2s'
+    fork = 2
     timeUnit = 'ms'
     resultFormat = 'JSON'
 }
