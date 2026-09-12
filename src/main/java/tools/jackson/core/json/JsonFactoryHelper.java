@@ -38,6 +38,13 @@ public class JsonFactoryHelper extends JsonFactory {
                 _maximumNonEscapedChar, _quoteChar);
     }
 
+    public PR1682JsonGenerator createPR1682Generator(ObjectWriteContext ctxt, IOContext ioCtxt,
+            int stdFeatures, int formatFeatures, OutputStream out) {
+        return new PR1682JsonGenerator(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
+                _rootValueSeparator, _characterEscapes, null,
+                _maximumNonEscapedChar, _quoteChar);
+    }
+
     public WriterBasedJsonGenerator createWriterGenerator(ObjectWriteContext ctxt, IOContext ioCtxt,
             int stdFeatures, int formatFeatures, Writer out) {
         return new WriterBasedJsonGenerator(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
@@ -48,6 +55,13 @@ public class JsonFactoryHelper extends JsonFactory {
     public PR1657WriterJsonGenerator createPR1657WriterGenerator(ObjectWriteContext ctxt, IOContext ioCtxt,
             int stdFeatures, int formatFeatures, Writer out) {
         return new PR1657WriterJsonGenerator(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
+                _rootValueSeparator, null, _characterEscapes,
+                _maximumNonEscapedChar, _quoteChar);
+    }
+
+    public PR1682WriterJsonGenerator createPR1682WriterGenerator(ObjectWriteContext ctxt, IOContext ioCtxt,
+            int stdFeatures, int formatFeatures, Writer out) {
+        return new PR1682WriterJsonGenerator(ctxt, ioCtxt, stdFeatures, formatFeatures, out,
                 _rootValueSeparator, null, _characterEscapes,
                 _maximumNonEscapedChar, _quoteChar);
     }
